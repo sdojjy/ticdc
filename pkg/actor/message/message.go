@@ -25,6 +25,8 @@ const (
 	TypeUnknown Type = iota
 	TypeTick
 	TypeBarrier
+	TypeStop
+	TypeStart
 	// Add a new type when adding a new message.
 )
 
@@ -34,6 +36,7 @@ type Message struct {
 	Tp Type
 	// BarrierTs
 	BarrierTs model.Ts
+	StartCh   chan struct{}
 }
 
 // TickMessage creates the message of Tick
@@ -48,5 +51,18 @@ func BarrierMessage(barrierTs model.Ts) Message {
 	return Message{
 		Tp:        TypeBarrier,
 		BarrierTs: barrierTs,
+	}
+}
+
+func StopMessage() Message {
+	return Message{
+		Tp: TypeStop,
+	}
+}
+
+func StartMessage(ch chan struct{}) Message {
+	return Message{
+		Tp:      TypeStart,
+		StartCh: ch,
 	}
 }

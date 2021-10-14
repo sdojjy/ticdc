@@ -40,9 +40,9 @@ type mounterNode struct {
 	mu    sync.Mutex
 	queue deque.Deque // we use Deque for better memory consumption and support for batching
 
-	wg     errgroup.Group
-	cancel context.CancelFunc
-
+	wg       errgroup.Group
+	cancel   context.CancelFunc
+	outputCh chan pipeline.Message
 	// notifies new events pushed to the queue
 	notifier notify.Notifier
 	// limits the rate at which notifications are sent
@@ -85,7 +85,7 @@ func (n *mounterNode) Init(ctx pipeline.NodeContext) error {
 						msg := msg.(pipeline.Message)
 						if msg.Tp != pipeline.MessageTypePolymorphicEvent {
 							// sends the control message directly to the next node
-							ctx.SendToNextNode(msg)
+							n.outputCh <- msg
 							continue // to handling the next message
 						}
 
@@ -100,8 +100,7 @@ func (n *mounterNode) Init(ctx pipeline.NodeContext) error {
 								return nil
 							}
 						}
-
-						ctx.SendToNextNode(msg)
+						n.outputCh <- msg
 					}
 				}
 			}
@@ -123,6 +122,10 @@ func (n *mounterNode) Receive(ctx pipeline.NodeContext) error {
 		n.notifier.Notify()
 	}
 	return nil
+}
+
+func (n *mounterNode) Receives(ctx context.Context) chan pipeline.Message {
+	return n.outputCh
 }
 
 func (n *mounterNode) Destroy(ctx pipeline.NodeContext) error {

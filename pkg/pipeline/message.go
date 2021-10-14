@@ -25,6 +25,7 @@ const (
 	MessageTypePolymorphicEvent
 	MessageTypeBarrier
 	MessageTypeTick
+	MessageTypeRawPolymorphicEvent
 )
 
 // Message is a vehicle for transferring information between nodes
@@ -38,6 +39,14 @@ type Message struct {
 	PolymorphicEvent *model.PolymorphicEvent
 	// BarrierTs
 	BarrierTs model.Ts
+}
+
+// RawPolymorphicEventMessage creates the message of RawPolymorphicEventMessage
+func RawPolymorphicEventMessage(event *model.PolymorphicEvent) Message {
+	return Message{
+		Tp:               MessageTypeRawPolymorphicEvent,
+		PolymorphicEvent: event,
+	}
 }
 
 // PolymorphicEventMessage creates the message of PolymorphicEvent
@@ -56,6 +65,27 @@ func CommandMessage(command *Command) Message {
 	}
 }
 
+// StartMessage creates the message of Start
+func StartMessage(startCh chan struct{}) Message {
+	return Message{
+		Tp: MessageTypeCommand,
+		Command: &Command{
+			Tp:      CommandTypeStart,
+			StartCh: startCh,
+		},
+	}
+}
+
+// StopMessage creates the message of Stop
+func StopMessage() Message {
+	return Message{
+		Tp: MessageTypeCommand,
+		Command: &Command{
+			Tp: CommandTypeStop,
+		},
+	}
+}
+
 // BarrierMessage creates the message of Command
 func BarrierMessage(barrierTs model.Ts) Message {
 	return Message{
@@ -65,7 +95,6 @@ func BarrierMessage(barrierTs model.Ts) Message {
 }
 
 // TickMessage creates the message of Tick
-// Note: the returned message is READ-ONLY.
 func TickMessage() Message {
 	return Message{
 		Tp: MessageTypeTick,
@@ -78,11 +107,17 @@ type CommandType int
 const (
 	// CommandTypeUnknown is unknown message type
 	CommandTypeUnknown CommandType = iota
-	// CommandTypeStop means the table pipeline should stop at once
+	// CommandTypeStopAtTs means the table pipeline should stop at the specified Ts
+	CommandTypeStopAtTs
+	// CommandTypeStart starts an actor.
+	CommandTypeStart
+	// CommandTypeStop stops an actor.
 	CommandTypeStop
 )
 
 // Command is the command about table pipeline
 type Command struct {
-	Tp CommandType
+	Tp        CommandType
+	StoppedTs model.Ts
+	StartCh   chan struct{}
 }

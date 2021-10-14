@@ -59,6 +59,7 @@ func (r *nodeRunner) run(ctx context.Context) error {
 		return err
 	}
 	// TODO: We can add monitoring for execution time and channel length here uniformly
+	// 把消息发到下一个 node
 	for msg := range r.previous.getOutputCh() {
 		err := r.node.Receive(withMessage(nodeCtx, msg))
 		if err != nil {
