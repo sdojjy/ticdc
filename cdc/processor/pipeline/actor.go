@@ -95,10 +95,11 @@ func (t *tableActor) Poll(ctx context.Context, msgs []message.Message) bool {
 			t.stop(nil)
 			break
 		case message.TypeBarrier:
-			err := t.sinkNode.HandleMessage(ctx, msgs[i])
+			err := t.sinkNode.HandleMessages(ctx, msgs[i])
 			if err != nil {
 				t.stop(err)
 			}
+			// tick 消息是不是根据 node 的类型分类？
 		case message.TypeTick:
 		}
 
@@ -108,11 +109,11 @@ func (t *tableActor) Poll(ctx context.Context, msgs []message.Message) bool {
 			pullerEvents = t.pullerEventsStash[0:]
 			t.pullerEventsStash = t.pullerEventsStash[:0]
 		} else {
-			for event := range t.pullerNode.Receives(ctx) {
+			for event := range t.pullerNode.OutPut(ctx) {
 				pullerEvents = append(pullerEvents, event)
 			}
 		}
-
+		// send message to puller
 		n := 0
 		for _, event := range pullerEvents {
 			// TODO(dongmen) use non-blocking func here
@@ -128,11 +129,34 @@ func (t *tableActor) Poll(ctx context.Context, msgs []message.Message) bool {
 			sorterEvents = t.sorterEventsStash[0:]
 			t.sorterEventsStash = t.sorterEventsStash[:0]
 		} else {
-			for event := range t.sorterNode.Receives(ctx) {
+			for event := range t.sorterNode.OutPut(ctx) {
 				sorterEvents = append(sorterEvents, event)
 			}
 		}
+		// send message to mounterNode
 		n = 0
+		for _, event := range sorterEvents {
+			t.mounterNode.Receives(event)
+			n++
+		}
+		t.sorterEventsStash = sorterEvents[n:]
+
+		var mounterEvents []pipeline.Message
+		if len(t.mounterEventsStash) != 0 {
+			mounterEvents = t.mounterEventsStash[0:]
+			t.mounterEventsStash = t.mounterEventsStash[:0]
+		} else {
+			for event := range t.sorterNode.OutPut(ctx) {
+				mounterEvents = append(mounterEvents, event)
+			}
+		}
+		// send message to sinkNode
+		n = 0
+		for _, event := range mounterEvents {
+			t.sinkNode.HandleMessage(ctx, event)
+			n++
+		}
+		t.mounterEventsStash = mounterEvents[n:]
 
 	}
 	return !t.stopped
@@ -218,7 +242,7 @@ func (t *tableActor) start() error {
 	}
 
 	t.mounterNode = newMounterNode().(*mounterNode)
-	if err := t.mounterNode.Start(t.ctx, t.wg, t.info, t.vars); err != nil {
+	if err := t.mounterNode.Start(t.ctx); err != nil {
 		log.Error("mounter fails to start")
 	}
 

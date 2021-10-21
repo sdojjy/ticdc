@@ -114,7 +114,7 @@ func (n *pullerNode) Receive(ctx pipeline.NodeContext) error {
 	return nil
 }
 
-func (n *pullerNode) Receives(ctx context.Context) chan pipeline.Message {
+func (n *pullerNode) OutPut(ctx context.Context) chan pipeline.Message {
 	return n.outputCh
 }
 

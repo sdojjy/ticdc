@@ -110,6 +110,10 @@ func (n *mounterNode) Init(ctx pipeline.NodeContext) error {
 	return nil
 }
 
+func (n *mounterNode) Start(ctx context.Context) error {
+	return n.Init(ctx)
+}
+
 // Receive receives the message from the previous node
 func (n *mounterNode) Receive(ctx pipeline.NodeContext) error {
 	msg := ctx.Message()
@@ -124,7 +128,19 @@ func (n *mounterNode) Receive(ctx pipeline.NodeContext) error {
 	return nil
 }
 
-func (n *mounterNode) Receives(ctx context.Context) chan pipeline.Message {
+func (n *mounterNode) Receives(msg pipeline.Message) error {
+	n.mu.Lock()
+	n.queue.PushBack(msg)
+	n.mu.Unlock()
+
+	if n.rl.Allow() {
+		// send notification under the rate limiter
+		n.notifier.Notify()
+	}
+	return nil
+}
+
+func (n *mounterNode) OutPut(ctx context.Context) chan pipeline.Message {
 	return n.outputCh
 }
 

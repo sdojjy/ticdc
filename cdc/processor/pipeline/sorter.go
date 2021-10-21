@@ -211,7 +211,7 @@ func (n *sorterNode) Receive(ctx pipeline.NodeContext) error {
 	return nil
 }
 
-func (n *sorterNode) Receives(ctx context.Context) chan pipeline.Message {
+func (n *sorterNode) OutPut(ctx context.Context) chan pipeline.Message {
 	return n.outputCh
 }
 

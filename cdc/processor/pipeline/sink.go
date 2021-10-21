@@ -15,6 +15,7 @@ package pipeline
 
 import (
 	"context"
+	"github.com/pingcap/ticdc/pkg/actor/message"
 	"sync/atomic"
 	"time"
 
@@ -351,6 +352,22 @@ func (n *sinkNode) HandleMessage(ctx context.Context, msg pipeline.Message) erro
 	return nil
 }
 
+func (n *sinkNode) HandleMessages(ctx context.Context, msg message.Message) error {
+	switch msg.Tp {
+	case message.TypeStop:
+		return n.stop(ctx)
+	case message.TypeBarrier:
+		n.barrierTs = msg.BarrierTs
+		if err := n.flushSink(ctx, n.resolvedTs); err != nil {
+			return errors.Trace(err)
+		}
+	case message.TypeTick:
+		if err := n.flushSink(ctx, n.resolvedTs); err != nil {
+			return errors.Trace(err)
+		}
+	}
+	return nil
+}
 func (n *sinkNode) Destroy(ctx pipeline.NodeContext) error {
 	n.status.Store(TableStatusStopped)
 	n.flowController.Abort()

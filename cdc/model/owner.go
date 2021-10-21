@@ -213,6 +213,8 @@ func (i *TableReplicaInfo) Clone() *TableReplicaInfo {
 // TaskStatus records the task information of a capture
 type TaskStatus struct {
 	// Table information list, containing tables that processor should process, updated by ownrer, processor is read only.
+	CaptureID    CaptureID
+	ChangeFeedID ChangeFeedID
 	Tables       map[TableID]*TableReplicaInfo `json:"tables"`
 	Operation    map[TableID]*TableOperation   `json:"operation"`
 	AdminJobType AdminJobType                  `json:"admin-job-type"`
