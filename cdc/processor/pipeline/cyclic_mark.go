@@ -36,6 +36,8 @@ type cyclicMarkNode struct {
 	// startTs -> replicaID
 	currentReplicaIDs map[model.Ts]uint64
 	currentCommitTs   uint64
+
+	outputCh chan pipeline.Message
 }
 
 func newCyclicMarkNode(markTableID model.TableID) pipeline.Node {
@@ -43,6 +45,7 @@ func newCyclicMarkNode(markTableID model.TableID) pipeline.Node {
 		markTableID:            markTableID,
 		unknownReplicaIDEvents: make(map[model.Ts][]*model.PolymorphicEvent),
 		currentReplicaIDs:      make(map[model.Ts]uint64),
+		outputCh:               make(chan pipeline.Message, 50),
 	}
 }
 
@@ -55,6 +58,10 @@ func (n *cyclicMarkNode) Init(ctx pipeline.NodeContext) error {
 	}
 	// do nothing
 	return nil
+}
+
+func (n *cyclicMarkNode) start(ctx pipeline.NodeContext) error {
+	return n.Init(ctx)
 }
 
 // Receive receives the message from the previous node.
@@ -75,7 +82,8 @@ func (n *cyclicMarkNode) Receive(ctx pipeline.NodeContext) error {
 		event := msg.PolymorphicEvent
 		n.flush(ctx, event.CRTs)
 		if event.RawKV.OpType == model.OpTypeResolved {
-			ctx.SendToNextNode(msg)
+			//ctx.SendToNextNode(msg)
+			n.outputCh <- msg
 			return nil
 		}
 		tableID, err := entry.DecodeTableID(event.RawKV.Key)
@@ -89,7 +97,8 @@ func (n *cyclicMarkNode) Receive(ctx pipeline.NodeContext) error {
 		}
 		return nil
 	}
-	ctx.SendToNextNode(msg)
+	//ctx.SendToNextNode(msg)
+	n.outputCh <- msg
 	return nil
 }
 
@@ -152,7 +161,8 @@ func (n *cyclicMarkNode) sendNormalRowEventToNextNode(ctx pipeline.NodeContext, 
 	}
 	for _, event := range events {
 		event.Row.ReplicaID = replicaID
-		ctx.SendToNextNode(pipeline.PolymorphicEventMessage(event))
+		//ctx.SendToNextNode(pipeline.PolymorphicEventMessage(event))
+		n.outputCh <- pipeline.PolymorphicEventMessage(event)
 	}
 }
 

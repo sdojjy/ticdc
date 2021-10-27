@@ -45,6 +45,7 @@ type tableActor struct {
 	// The ctx is only used in nodes starts.
 	// TODO(neil) remove it, context should not be embedded in struct.
 	ctx       context.Context
+	cdcCx     cdcContext.Context
 	cancel    context.CancelFunc
 	wg        *errgroup.Group
 	reportErr func(error)
@@ -70,15 +71,14 @@ type tableActor struct {
 	info *cdcContext.ChangefeedVars
 	vars *cdcContext.GlobalVars
 
-	pullerNode  *pullerNode
-	sorterNode  *sorterNode
-	mounterNode *mounterNode
-	cyclicNode  *cyclicMarkNode
-	sinkNode    *sinkNode
+	pullerNode *pullerNode
+	sorterNode *sorterNode
+	//mounterNode *mounterNode
+	cyclicNode *cyclicMarkNode
+	sinkNode   *sinkNode
 
-	pullerEventsStash  []pipeline.Message
-	sorterEventsStash  []pipeline.Message
-	mounterEventsStash []pipeline.Message
+	pullerEventsStash []pipeline.Message
+	sorterEventsStash []pipeline.Message
 }
 
 var _ TablePipeline = (*tableActor)(nil)
@@ -131,35 +131,14 @@ func (t *tableActor) Poll(ctx context.Context, msgs []message.Message) bool {
 			t.sorterEventsStash = t.sorterEventsStash[:0]
 		} else {
 			sorterEvents = tryReceiveFromOutput(sorterEvents, t.sorterNode.OutPut(ctx))
-			//for event := range t.sorterNode.OutPut(ctx) {
-			//	sorterEvents = append(sorterEvents, event)
-			//}
-		}
-		// send message to mounterNode
-		n = 0
-		for _, event := range sorterEvents {
-			t.mounterNode.Receives(event)
-			n++
-		}
-		t.sorterEventsStash = sorterEvents[n:]
-
-		var mounterEvents []pipeline.Message
-		if len(t.mounterEventsStash) != 0 {
-			mounterEvents = t.mounterEventsStash[0:]
-			t.mounterEventsStash = t.mounterEventsStash[:0]
-		} else {
-			//for event := range t.mounterNode.OutPut(ctx) {
-			//	mounterEvents = append(mounterEvents, event)
-			//}
-			mounterEvents = tryReceiveFromOutput(mounterEvents, t.mounterNode.OutPut(ctx))
 		}
 		// send message to sinkNode
 		n = 0
-		for _, event := range mounterEvents {
+		for _, event := range sorterEvents {
 			t.sinkNode.HandleMessage(ctx, event)
 			n++
 		}
-		t.mounterEventsStash = mounterEvents[n:]
+		t.sorterEventsStash = sorterEvents[n:]
 
 	}
 	return !t.stopped
@@ -250,14 +229,18 @@ func (t *tableActor) start() error {
 		return err
 	}
 
-	t.mounterNode = newMounterNode().(*mounterNode)
-	if err := t.mounterNode.Start(t.ctx); err != nil {
-		log.Error("mounter fails to start")
-	}
+	//t.mounterNode = newMounterNode().(*mounterNode)
+	//if err := t.mounterNode.Start(t.ctx); err != nil {
+	//	log.Error("mounter fails to start")
+	//}
 
 	if t.cyclicEnabled {
 		// TODO(neil) support cyclic feature.
-		// t.cyclicNode = newCyclicMarkNode(t.replicaInfo.MarkTableID).(*cyclicMarkNode)
+		t.cyclicNode = newCyclicMarkNode(t.replicaInfo.MarkTableID).(*cyclicMarkNode)
+		if err := t.cyclicNode.start(pipeline.NewNodeContext(t.cdcCx, pipeline.Message{}, nil)); err != nil {
+			log.Error("sink fails to start", zap.Error(err))
+			return err
+		}
 	}
 
 	t.sinkNode = newSinkNode(t.sink, t.replicaInfo.StartTs, t.targetTs, flowController)
@@ -387,6 +370,7 @@ func NewTableActor(cdcCtx cdcContext.Context,
 	ctx, cancel := context.WithCancel(cdcCtx)
 	table := &tableActor{
 		ctx:       ctx,
+		cdcCx:     cdcCtx,
 		cancel:    cancel,
 		wg:        wg,
 		reportErr: cdcCtx.Throw,

@@ -15,9 +15,10 @@ package pipeline
 
 import (
 	"context"
-	"github.com/pingcap/ticdc/pkg/actor/message"
 	"sync/atomic"
 	"time"
+
+	"github.com/pingcap/ticdc/pkg/actor/message"
 
 	"github.com/pingcap/errors"
 	"github.com/pingcap/failpoint"
@@ -314,6 +315,14 @@ func (n *sinkNode) HandleMessage(ctx context.Context, msg pipeline.Message) erro
 	switch msg.Tp {
 	case pipeline.MessageTypePolymorphicEvent:
 		event := msg.PolymorphicEvent
+		if event.RawKV.OpType != model.OpTypeResolved {
+			failpoint.Inject("MounterNodeWaitPrepare", func() {})
+			// only RowChangedEvents need mounting
+			err := event.WaitPrepare(ctx)
+			if err != nil {
+				return errors.Trace(err)
+			}
+		}
 		if event.RawKV.OpType == model.OpTypeResolved {
 			if n.status == TableStatusInitializing {
 				n.status.Store(TableStatusRunning)
