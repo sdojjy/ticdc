@@ -203,14 +203,6 @@ func (t *tableActor) Receive(ctx context.Context, msgs []pipeline.Message) bool 
 
 		case pipeline.MessageTypeCommand:
 			switch msgs[i].Command.Tp {
-			case pipeline.CommandTypeStart:
-				if err := t.start(); err != nil {
-					t.stop(err)
-				}
-				close(msgs[i].Command.StartCh)
-
-			case pipeline.CommandTypeStop:
-				t.stop(nil)
 
 			case pipeline.CommandTypeStopAtTs:
 				err := t.sinkNode.HandleMessage(ctx, msgs[i])
@@ -311,10 +303,12 @@ func (t *tableActor) CheckpointTs() model.Ts {
 
 // UpdateBarrierTs updates the barrier ts in this table pipeline
 func (t *tableActor) UpdateBarrierTs(ts model.Ts) {
-	msg := message.BarrierMessage(ts)
-	err := defaultRouter.Send(actor.ID(t.tableID), msg)
-	if err != nil {
-		log.Warn("send fails", zap.Reflect("msg", msg), zap.Error(err))
+	if t.sinkNode.barrierTs != ts {
+		msg := message.BarrierMessage(ts)
+		err := defaultRouter.Send(actor.ID(t.tableID), msg)
+		if err != nil {
+			log.Warn("send fails", zap.Reflect("msg", msg), zap.Error(err))
+		}
 	}
 }
 

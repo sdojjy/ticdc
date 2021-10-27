@@ -65,27 +65,6 @@ func CommandMessage(command *Command) Message {
 	}
 }
 
-// StartMessage creates the message of Start
-func StartMessage(startCh chan struct{}) Message {
-	return Message{
-		Tp: MessageTypeCommand,
-		Command: &Command{
-			Tp:      CommandTypeStart,
-			StartCh: startCh,
-		},
-	}
-}
-
-// StopMessage creates the message of Stop
-func StopMessage() Message {
-	return Message{
-		Tp: MessageTypeCommand,
-		Command: &Command{
-			Tp: CommandTypeStop,
-		},
-	}
-}
-
 // BarrierMessage creates the message of Command
 func BarrierMessage(barrierTs model.Ts) Message {
 	return Message{
@@ -109,10 +88,6 @@ const (
 	CommandTypeUnknown CommandType = iota
 	// CommandTypeStopAtTs means the table pipeline should stop at the specified Ts
 	CommandTypeStopAtTs
-	// CommandTypeStart starts an actor.
-	CommandTypeStart
-	// CommandTypeStop stops an actor.
-	CommandTypeStop
 )
 
 // Command is the command about table pipeline
