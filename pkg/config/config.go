@@ -32,6 +32,9 @@ import (
 const (
 	// DefaultSortDir is the default value of sort-dir, it will be s sub directory of data-dir.
 	DefaultSortDir = "/tmp/sorter"
+
+	// DefaultRedoDir is the sub directory path of data-dir.
+	DefaultRedoDir = "/redo"
 )
 
 func init() {
@@ -58,21 +61,29 @@ var defaultReplicaConfig = &ReplicaConfig{
 		Tp:          "table-number",
 		PollingTime: -1,
 	},
+	Consistent: &ConsistentConfig{
+		Level:             "normal",
+		MaxLogSize:        64,
+		FlushIntervalInMs: 1000,
+		Storage:           "local",
+		S3URI:             "",
+	},
 }
 
 // ReplicaConfig represents some addition replication config for a changefeed
 type ReplicaConfig replicaConfig
 
 type replicaConfig struct {
-	CaseSensitive    bool             `toml:"case-sensitive" json:"case-sensitive"`
-	EnableOldValue   bool             `toml:"enable-old-value" json:"enable-old-value"`
-	ForceReplicate   bool             `toml:"force-replicate" json:"force-replicate"`
-	CheckGCSafePoint bool             `toml:"check-gc-safe-point" json:"check-gc-safe-point"`
-	Filter           *FilterConfig    `toml:"filter" json:"filter"`
-	Mounter          *MounterConfig   `toml:"mounter" json:"mounter"`
-	Sink             *SinkConfig      `toml:"sink" json:"sink"`
-	Cyclic           *CyclicConfig    `toml:"cyclic-replication" json:"cyclic-replication"`
-	Scheduler        *SchedulerConfig `toml:"scheduler" json:"scheduler"`
+	CaseSensitive    bool              `toml:"case-sensitive" json:"case-sensitive"`
+	EnableOldValue   bool              `toml:"enable-old-value" json:"enable-old-value"`
+	ForceReplicate   bool              `toml:"force-replicate" json:"force-replicate"`
+	CheckGCSafePoint bool              `toml:"check-gc-safe-point" json:"check-gc-safe-point"`
+	Filter           *FilterConfig     `toml:"filter" json:"filter"`
+	Mounter          *MounterConfig    `toml:"mounter" json:"mounter"`
+	Sink             *SinkConfig       `toml:"sink" json:"sink"`
+	Cyclic           *CyclicConfig     `toml:"cyclic-replication" json:"cyclic-replication"`
+	Scheduler        *SchedulerConfig  `toml:"scheduler" json:"scheduler"`
+	Consistent       *ConsistentConfig `toml:"consistent" json:"consistent"`
 }
 
 // Marshal returns the json marshal format of a ReplicationConfig
@@ -186,7 +197,7 @@ var defaultServerConfig = &ServerConfig{
 		SortDir:                DefaultSortDir,
 	},
 	Security:            &SecurityConfig{},
-	PerTableMemoryQuota: 20 * 1024 * 1024, // 20MB
+	PerTableMemoryQuota: 10 * 1024 * 1024, // 10MB
 	KVClient: &KVClientConfig{
 		WorkerConcurrent: 8,
 		WorkerPoolSize:   0, // 0 will use NumCPU() * 2
@@ -298,9 +309,9 @@ func (c *ServerConfig) ValidateAndAdjust() error {
 		}
 	}
 
-	conf := GetDefaultServerConfig()
+	defaultCfg := GetDefaultServerConfig()
 	if c.Sorter == nil {
-		c.Sorter = conf.Sorter
+		c.Sorter = defaultCfg.Sorter
 	}
 	c.Sorter.SortDir = DefaultSortDir
 	err := c.Sorter.ValidateAndAdjust()
@@ -309,14 +320,11 @@ func (c *ServerConfig) ValidateAndAdjust() error {
 	}
 
 	if c.PerTableMemoryQuota == 0 {
-		c.PerTableMemoryQuota = conf.PerTableMemoryQuota
-	}
-	if c.PerTableMemoryQuota < 6*1024*1024 {
-		return cerror.ErrInvalidServerOption.GenWithStackByArgs("per-table-memory-quota should be at least 6MB")
+		c.PerTableMemoryQuota = defaultCfg.PerTableMemoryQuota
 	}
 
 	if c.KVClient == nil {
-		c.KVClient = conf.KVClient
+		c.KVClient = defaultCfg.KVClient
 	}
 	if c.KVClient.WorkerConcurrent <= 0 {
 		return cerror.ErrInvalidServerOption.GenWithStackByArgs("region-scan-limit should be at least 1")

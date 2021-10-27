@@ -15,6 +15,7 @@ package pipeline
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/pingcap/ticdc/pkg/actor/message"
@@ -23,8 +24,9 @@ import (
 	"github.com/pingcap/log"
 	"github.com/pingcap/ticdc/cdc/entry"
 	"github.com/pingcap/ticdc/cdc/model"
-	"github.com/pingcap/ticdc/cdc/puller"
-	psorter "github.com/pingcap/ticdc/cdc/puller/sorter"
+	"github.com/pingcap/ticdc/cdc/sorter"
+	"github.com/pingcap/ticdc/cdc/sorter/memory"
+	"github.com/pingcap/ticdc/cdc/sorter/unified"
 	"github.com/pingcap/ticdc/pkg/actor"
 	cdcContext "github.com/pingcap/ticdc/pkg/context"
 	cerror "github.com/pingcap/ticdc/pkg/errors"
@@ -38,7 +40,7 @@ const (
 )
 
 type sorterNode struct {
-	sorter puller.EventSorter
+	sorter sorter.EventSorter
 
 	tableID   model.TableID
 	tableName string // quoted schema and table, used in metircs only
@@ -51,14 +53,21 @@ type sorterNode struct {
 
 	wg     *errgroup.Group
 	cancel context.CancelFunc
+
+	// The latest resolved ts that sorter has received.
+	resolvedTs model.Ts
 }
 
-func newSorterNode(tableName string, tableID model.TableID, flowController tableFlowController, mounter entry.Mounter) pipeline.Node {
+func newSorterNode(
+	tableName string, tableID model.TableID, startTs model.Ts,
+	flowController tableFlowController, mounter entry.Mounter,
+) *sorterNode {
 	return &sorterNode{
 		tableName:      tableName,
 		tableID:        tableID,
 		flowController: flowController,
 		mounter:        mounter,
+		resolvedTs:     startTs,
 		outputCh:       make(chan pipeline.Message, 50),
 	}
 }
@@ -71,22 +80,22 @@ func (n *sorterNode) Start(ctx context.Context, wg *errgroup.Group, info *cdcCon
 	n.wg = wg
 	stdCtx, cancel := context.WithCancel(ctx)
 	n.cancel = cancel
-	var sorter puller.EventSorter
+	var sorter sorter.EventSorter
 	sortEngine := info.Info.Engine
 	switch sortEngine {
 	case model.SortInMemory:
-		sorter = puller.NewEntrySorter()
+		sorter = memory.NewEntrySorter()
 	case model.SortUnified, model.SortInFile /* `file` becomes an alias of `unified` for backward compatibility */ :
 		if sortEngine == model.SortInFile {
 			log.Warn("File sorter is obsolete and replaced by unified sorter. Please revise your changefeed settings",
 				zap.String("changefeed-id", info.ID), zap.String("table-name", n.tableName))
 		}
 		sortDir := info.Info.SortDir
-		err := psorter.UnifiedSorterCheckDir(sortDir)
+		err := unified.UnifiedSorterCheckDir(sortDir)
 		if err != nil {
 			return errors.Trace(err)
 		}
-		sorter, err = psorter.NewUnifiedSorter(sortDir, info.ID, n.tableName, n.tableID, vars.CaptureInfo.AdvertiseAddr)
+		sorter, err = unified.NewUnifiedSorter(sortDir, info.ID, n.tableName, n.tableID, vars.CaptureInfo.AdvertiseAddr)
 		if err != nil {
 			return errors.Trace(err)
 		}
@@ -206,6 +215,19 @@ func (n *sorterNode) Receive(ctx pipeline.NodeContext) error {
 	msg := ctx.Message()
 	switch msg.Tp {
 	case pipeline.MessageTypeRawPolymorphicEvent:
+		rawKV := msg.PolymorphicEvent.RawKV
+		if rawKV != nil && rawKV.OpType == model.OpTypeResolved {
+			// Puller resolved ts should not fall back.
+			resolvedTs := rawKV.CRTs
+			oldResolvedTs := atomic.SwapUint64(&n.resolvedTs, resolvedTs)
+			if oldResolvedTs > resolvedTs {
+				log.Panic("resolved ts regression",
+					zap.Int64("tableID", n.tableID),
+					zap.Uint64("resolvedTs", resolvedTs),
+					zap.Uint64("oldResolvedTs", oldResolvedTs))
+			}
+			atomic.StoreUint64(&n.resolvedTs, rawKV.CRTs)
+		}
 		n.sorter.AddEntry(ctx, msg.PolymorphicEvent)
 	default:
 		ctx.SendToNextNode(msg)
@@ -221,4 +243,8 @@ func (n *sorterNode) Destroy(ctx pipeline.NodeContext) error {
 	defer tableMemoryHistogram.DeleteLabelValues(ctx.ChangefeedVars().ID, ctx.GlobalVars().CaptureInfo.AdvertiseAddr)
 	n.cancel()
 	return n.wg.Wait()
+}
+
+func (n *sorterNode) ResolvedTs() model.Ts {
+	return atomic.LoadUint64(&n.resolvedTs)
 }
