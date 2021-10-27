@@ -632,9 +632,7 @@ func (p *processor) handleWorkload() {
 func (p *processor) pushResolvedTs2Table() {
 	resolvedTs := p.changefeed.Status.ResolvedTs
 	for _, table := range p.tables {
-		if table.ResolvedTs() != resolvedTs {
-			table.UpdateBarrierTs(resolvedTs)
-		}
+		table.UpdateBarrierTs(resolvedTs)
 	}
 }
 
