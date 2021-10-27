@@ -15,6 +15,7 @@ package pipeline
 
 import (
 	"context"
+
 	"github.com/pingcap/ticdc/pkg/actor/message"
 	"github.com/tikv/client-go/v2/oracle"
 
@@ -48,6 +49,7 @@ func newPullerNode(
 		tableID:     tableID,
 		replicaInfo: replicaInfo,
 		tableName:   tableName,
+		outputCh:    make(chan pipeline.Message, 50),
 	}
 }
 
@@ -68,7 +70,7 @@ func (n *pullerNode) Init(ctx pipeline.NodeContext) error {
 
 func (n *pullerNode) Start(ctx context.Context, wg *errgroup.Group, info *cdcContext.ChangefeedVars, vars *cdcContext.GlobalVars) error {
 	n.wg = wg
-	metricTableResolvedTsGauge := tableResolvedTsGauge.WithLabelValues(info.ID, vars.CaptureInfo.AdvertiseAddr)
+	metricTableResolvedTsGauge := tableResolvedTsGauge.WithLabelValues(info.ID, vars.CaptureInfo.AdvertiseAddr, n.tableName)
 	ctxC, cancel := context.WithCancel(ctx)
 	ctxC = util.PutTableInfoInCtx(ctxC, n.tableID, n.tableName)
 	ctxC = util.PutChangefeedIDInCtx(ctxC, info.ID)

@@ -629,7 +629,9 @@ func (p *processor) handleWorkload() {
 func (p *processor) pushResolvedTs2Table() {
 	resolvedTs := p.changefeed.Status.ResolvedTs
 	for _, table := range p.tables {
-		table.UpdateBarrierTs(resolvedTs)
+		if table.ResolvedTs() != resolvedTs {
+			table.UpdateBarrierTs(resolvedTs)
+		}
 	}
 }
 
@@ -714,7 +716,12 @@ func (p *processor) createTablePipelineImpl(ctx cdcContext.Context, tableID mode
 	}
 
 	sink := p.sinkManager.CreateTableSink(tableID, replicaInfo.StartTs)
-	table := tablepipeline.NewTablePipeline(
+
+	table, err := tablepipeline.NewTableActor(ctx, p.mounter, tableID, tableNameStr, replicaInfo, sink, p.changefeed.Info.GetTargetTs())
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	/*table := tablepipeline.NewTablePipeline(
 		ctx,
 		p.mounter,
 		tableID,
@@ -722,7 +729,7 @@ func (p *processor) createTablePipelineImpl(ctx cdcContext.Context, tableID mode
 		replicaInfo,
 		sink,
 		p.changefeed.Info.GetTargetTs(),
-	)
+	)*/
 	p.wg.Add(1)
 	p.metricSyncTableNumGauge.Inc()
 	go func() {

@@ -13,7 +13,11 @@
 
 package pipeline
 
-import "github.com/pingcap/ticdc/pkg/context"
+import (
+	sdtCtx "context"
+
+	"github.com/pingcap/ticdc/pkg/context"
+)
 
 // NodeContext adds two functions from `coutext.Context` and created by pipeline
 type NodeContext interface {
@@ -62,4 +66,11 @@ func withMessage(ctx NodeContext, msg Message) NodeContext {
 
 func (ctx messageContext) Message() Message {
 	return ctx.message
+}
+
+func NewTableActorContext(ctx sdtCtx.Context) NodeContext {
+	return &nodeContext{
+		Context:  context.NewContext(ctx, nil),
+		outputCh: nil,
+	}
 }

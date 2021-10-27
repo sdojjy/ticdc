@@ -15,7 +15,7 @@ package pipeline
 
 import (
 	"context"
-	"github.com/pingcap/errors"
+
 	"github.com/pingcap/log"
 	"github.com/pingcap/ticdc/cdc/entry"
 	"github.com/pingcap/ticdc/cdc/model"
@@ -109,9 +109,10 @@ func (t *tableActor) Poll(ctx context.Context, msgs []message.Message) bool {
 			pullerEvents = t.pullerEventsStash[0:]
 			t.pullerEventsStash = t.pullerEventsStash[:0]
 		} else {
-			for event := range t.pullerNode.OutPut(ctx) {
-				pullerEvents = append(pullerEvents, event)
-			}
+			pullerEvents = tryReceiveFromOutput(pullerEvents, t.pullerNode.OutPut(ctx))
+			//for event := range t.pullerNode.OutPut(ctx) {
+			//	pullerEvents = append(pullerEvents, event)
+			//}
 		}
 		// send message to puller
 		n := 0
@@ -129,9 +130,10 @@ func (t *tableActor) Poll(ctx context.Context, msgs []message.Message) bool {
 			sorterEvents = t.sorterEventsStash[0:]
 			t.sorterEventsStash = t.sorterEventsStash[:0]
 		} else {
-			for event := range t.sorterNode.OutPut(ctx) {
-				sorterEvents = append(sorterEvents, event)
-			}
+			sorterEvents = tryReceiveFromOutput(sorterEvents, t.sorterNode.OutPut(ctx))
+			//for event := range t.sorterNode.OutPut(ctx) {
+			//	sorterEvents = append(sorterEvents, event)
+			//}
 		}
 		// send message to mounterNode
 		n = 0
@@ -146,9 +148,10 @@ func (t *tableActor) Poll(ctx context.Context, msgs []message.Message) bool {
 			mounterEvents = t.mounterEventsStash[0:]
 			t.mounterEventsStash = t.mounterEventsStash[:0]
 		} else {
-			for event := range t.sorterNode.OutPut(ctx) {
-				mounterEvents = append(mounterEvents, event)
-			}
+			//for event := range t.mounterNode.OutPut(ctx) {
+			//	mounterEvents = append(mounterEvents, event)
+			//}
+			mounterEvents = tryReceiveFromOutput(mounterEvents, t.mounterNode.OutPut(ctx))
 		}
 		// send message to sinkNode
 		n = 0
@@ -160,6 +163,20 @@ func (t *tableActor) Poll(ctx context.Context, msgs []message.Message) bool {
 
 	}
 	return !t.stopped
+}
+
+func tryReceiveFromOutput(mounterEvents []pipeline.Message, output chan pipeline.Message) []pipeline.Message {
+	for {
+		select {
+		case msg, ok := <-output:
+			if !ok {
+				return mounterEvents
+			}
+			mounterEvents = append(mounterEvents, msg)
+		default:
+			return mounterEvents
+		}
+	}
 }
 
 // Receive processes messages to the table.
@@ -396,23 +413,26 @@ func NewTableActor(cdcCtx cdcContext.Context,
 		vars: vars,
 	}
 
+	// TODO add a test to make that the funcation must wait actor to be started
+	//      before returning.
+	//startCh := make(chan struct{})
+	//err = defaultRouter.Send(actor.ID(tableID), message.StartMessage(startCh))
+	//if err != nil {
+	//	return nil, err
+	//}
+	log.Info("spawn and start table actor", zap.Int64("tableID", tableID))
+	if err := table.start(); err != nil {
+		return nil, err
+	}
+	//select {
+	//case <-ctx.Done():
+	//	return nil, errors.Trace(err)
+	//case <-startCh:
+	//}
 	err := defaultSystem.Spawn(mb, table)
 	if err != nil {
 		return nil, err
 	}
-	// TODO add a test to make that the funcation must wait actor to be started
-	//      before returning.
-	startCh := make(chan struct{})
-	err = defaultRouter.Send(actor.ID(tableID), message.StartMessage(startCh))
-	if err != nil {
-		return nil, err
-	}
-	select {
-	case <-ctx.Done():
-		return nil, errors.Trace(err)
-	case <-startCh:
-	}
-	log.Info("spawn and start table actor", zap.Int64("tableID", tableID))
-
+	log.Info("spawn and start table actor done", zap.Int64("tableID", tableID))
 	return table, nil
 }

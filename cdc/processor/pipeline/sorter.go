@@ -15,8 +15,9 @@ package pipeline
 
 import (
 	"context"
-	"github.com/pingcap/ticdc/pkg/actor/message"
 	"time"
+
+	"github.com/pingcap/ticdc/pkg/actor/message"
 
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
@@ -58,6 +59,7 @@ func newSorterNode(tableName string, tableID model.TableID, flowController table
 		tableID:        tableID,
 		flowController: flowController,
 		mounter:        mounter,
+		outputCh:       make(chan pipeline.Message, 50),
 	}
 }
 func (n *sorterNode) Init(ctx pipeline.NodeContext) error {

@@ -51,8 +51,9 @@ type mounterNode struct {
 
 func newMounterNode() pipeline.Node {
 	return &mounterNode{
-		queue: deque.NewDeque(),
-		rl:    rate.NewLimiter(maxNotificationsPerSecond, 1 /* burst */),
+		queue:    deque.NewDeque(),
+		rl:       rate.NewLimiter(maxNotificationsPerSecond, 1 /* burst */),
+		outputCh: make(chan pipeline.Message, 50),
 	}
 }
 
@@ -111,7 +112,7 @@ func (n *mounterNode) Init(ctx pipeline.NodeContext) error {
 }
 
 func (n *mounterNode) Start(ctx context.Context) error {
-	return n.Init(ctx)
+	return n.Init(pipeline.NewTableActorContext(ctx))
 }
 
 // Receive receives the message from the previous node
