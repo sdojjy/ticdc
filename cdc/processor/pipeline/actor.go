@@ -252,7 +252,7 @@ func (t *tableActor) start() error {
 		return err
 	}
 
-	t.sorterNode = newSorterNode(t.tableName, t.tableID, flowController, t.mounter).(*sorterNode)
+	t.sorterNode = newSorterNode(t.tableName, t.tableID, t.replicaInfo.StartTs, flowController, t.mounter)
 	if err := t.sorterNode.Start(t.ctx, t.wg, t.info, t.vars); err != nil {
 		log.Error("sorter fails to start", zap.Error(err))
 		return err
