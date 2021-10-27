@@ -88,6 +88,8 @@ const (
 	CommandTypeUnknown CommandType = iota
 	// CommandTypeStopAtTs means the table pipeline should stop at the specified Ts
 	CommandTypeStopAtTs
+	// CommandTypeStop stops an actor.
+	CommandTypeStop
 )
 
 // Command is the command about table pipeline
