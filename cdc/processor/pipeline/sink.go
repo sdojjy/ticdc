@@ -165,6 +165,12 @@ func (n *sinkNode) emitEvent(ctx context.Context, event *model.PolymorphicEvent)
 		log.Warn("skip emit empty rows", zap.Any("event", event))
 		return nil
 	}
+	failpoint.Inject("MounterNodeWaitPrepare", func() {})
+	// only RowChangedEvents need mounting
+	err := event.WaitPrepare(ctx)
+	if err != nil {
+		return errors.Trace(err)
+	}
 
 	colLen := len(event.Row.Columns)
 	preColLen := len(event.Row.PreColumns)
@@ -315,14 +321,6 @@ func (n *sinkNode) HandleMessage(ctx context.Context, msg pipeline.Message) erro
 	switch msg.Tp {
 	case pipeline.MessageTypePolymorphicEvent:
 		event := msg.PolymorphicEvent
-		if event.RawKV.OpType != model.OpTypeResolved {
-			failpoint.Inject("MounterNodeWaitPrepare", func() {})
-			// only RowChangedEvents need mounting
-			err := event.WaitPrepare(ctx)
-			if err != nil {
-				return errors.Trace(err)
-			}
-		}
 		if event.RawKV.OpType == model.OpTypeResolved {
 			if n.status == TableStatusInitializing {
 				n.status.Store(TableStatusRunning)
