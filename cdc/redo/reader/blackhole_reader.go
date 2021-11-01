@@ -20,8 +20,7 @@ import (
 )
 
 // BlackHoleReader is a blockHole storage which implements LogReader interface
-type BlackHoleReader struct {
-}
+type BlackHoleReader struct{}
 
 // NewBlackHoleReader creates a new BlackHoleReader
 func NewBlackHoleReader() *BlackHoleReader {
@@ -46,4 +45,9 @@ func (br *BlackHoleReader) ReadNextDDL(ctx context.Context, maxNumberOfEvents ui
 // ReadMeta implements LogReader.ReadMeta
 func (br *BlackHoleReader) ReadMeta(ctx context.Context) (checkpointTs, resolvedTs uint64, err error) {
 	return 0, 1, nil
+}
+
+// Close implement the Close interface
+func (br *BlackHoleReader) Close() error {
+	return nil
 }

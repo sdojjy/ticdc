@@ -174,6 +174,13 @@ func (n *sinkNode) emitEvent(ctx context.Context, event *model.PolymorphicEvent)
 
 	colLen := len(event.Row.Columns)
 	preColLen := len(event.Row.PreColumns)
+	// Some transactions could generate empty row change event, such as
+	// begin; insert into t (id) values (1); delete from t where id=1; commit;
+	// Just ignore these row changed events
+	if colLen == 0 && preColLen == 0 {
+		return nil
+	}
+
 	config := n.config
 
 	// This indicates that it is an update event,
