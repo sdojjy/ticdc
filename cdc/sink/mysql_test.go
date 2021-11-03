@@ -31,8 +31,6 @@ import (
 	dmysql "github.com/go-sql-driver/mysql"
 	"github.com/pingcap/check"
 	"github.com/pingcap/errors"
-	timodel "github.com/pingcap/parser/model"
-	"github.com/pingcap/parser/mysql"
 	"github.com/pingcap/ticdc/cdc/model"
 	"github.com/pingcap/ticdc/cdc/sink/common"
 	"github.com/pingcap/ticdc/pkg/config"
@@ -43,6 +41,8 @@ import (
 	"github.com/pingcap/ticdc/pkg/retry"
 	"github.com/pingcap/ticdc/pkg/util/testleak"
 	"github.com/pingcap/tidb/infoschema"
+	timodel "github.com/pingcap/tidb/parser/model"
+	"github.com/pingcap/tidb/parser/mysql"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -745,8 +745,8 @@ func (s MySQLSinkSuite) TestSinkParamsClone(c *check.C) {
 	param2.batchReplaceEnabled = false
 	param2.maxTxnRow = 1
 	c.Assert(param1, check.DeepEquals, &sinkParams{
-		workerCount:         defaultWorkerCount,
-		maxTxnRow:           defaultMaxTxnRow,
+		workerCount:         DefaultWorkerCount,
+		maxTxnRow:           DefaultMaxTxnRow,
 		tidbTxnMode:         defaultTiDBTxnMode,
 		batchReplaceEnabled: defaultBatchReplaceEnabled,
 		batchReplaceSize:    defaultBatchReplaceSize,
@@ -757,7 +757,7 @@ func (s MySQLSinkSuite) TestSinkParamsClone(c *check.C) {
 	})
 	c.Assert(param2, check.DeepEquals, &sinkParams{
 		changefeedID:        "123",
-		workerCount:         defaultWorkerCount,
+		workerCount:         DefaultWorkerCount,
 		maxTxnRow:           1,
 		tidbTxnMode:         defaultTiDBTxnMode,
 		batchReplaceEnabled: false,
@@ -982,10 +982,10 @@ func (s MySQLSinkSuite) TestAdjustSQLMode(c *check.C) {
 		mock.ExpectClose()
 		return db, nil
 	}
-	backupGetDBConn := getDBConnImpl
-	getDBConnImpl = mockGetDBConn
+	backupGetDBConn := GetDBConnImpl
+	GetDBConnImpl = mockGetDBConn
 	defer func() {
-		getDBConnImpl = backupGetDBConn
+		GetDBConnImpl = backupGetDBConn
 	}()
 
 	changefeed := "test-changefeed"
@@ -1107,10 +1107,10 @@ func (s MySQLSinkSuite) TestNewMySQLSinkExecDML(c *check.C) {
 		mock.ExpectClose()
 		return db, nil
 	}
-	backupGetDBConn := getDBConnImpl
-	getDBConnImpl = mockGetDBConn
+	backupGetDBConn := GetDBConnImpl
+	GetDBConnImpl = mockGetDBConn
 	defer func() {
-		getDBConnImpl = backupGetDBConn
+		GetDBConnImpl = backupGetDBConn
 	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1247,10 +1247,10 @@ func (s MySQLSinkSuite) TestExecDMLRollbackErrDatabaseNotExists(c *check.C) {
 		mock.ExpectClose()
 		return db, nil
 	}
-	backupGetDBConn := getDBConnImpl
-	getDBConnImpl = mockGetDBConnErrDatabaseNotExists
+	backupGetDBConn := GetDBConnImpl
+	GetDBConnImpl = mockGetDBConnErrDatabaseNotExists
 	defer func() {
-		getDBConnImpl = backupGetDBConn
+		GetDBConnImpl = backupGetDBConn
 	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1315,10 +1315,10 @@ func (s MySQLSinkSuite) TestExecDMLRollbackErrTableNotExists(c *check.C) {
 		mock.ExpectClose()
 		return db, nil
 	}
-	backupGetDBConn := getDBConnImpl
-	getDBConnImpl = mockGetDBConnErrDatabaseNotExists
+	backupGetDBConn := GetDBConnImpl
+	GetDBConnImpl = mockGetDBConnErrDatabaseNotExists
 	defer func() {
-		getDBConnImpl = backupGetDBConn
+		GetDBConnImpl = backupGetDBConn
 	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1385,10 +1385,10 @@ func (s MySQLSinkSuite) TestExecDMLRollbackErrRetryable(c *check.C) {
 		mock.ExpectClose()
 		return db, nil
 	}
-	backupGetDBConn := getDBConnImpl
-	getDBConnImpl = mockGetDBConnErrDatabaseNotExists
+	backupGetDBConn := GetDBConnImpl
+	GetDBConnImpl = mockGetDBConnErrDatabaseNotExists
 	defer func() {
-		getDBConnImpl = backupGetDBConn
+		GetDBConnImpl = backupGetDBConn
 	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1440,10 +1440,10 @@ func (s MySQLSinkSuite) TestNewMySQLSinkExecDDL(c *check.C) {
 		mock.ExpectClose()
 		return db, nil
 	}
-	backupGetDBConn := getDBConnImpl
-	getDBConnImpl = mockGetDBConn
+	backupGetDBConn := GetDBConnImpl
+	GetDBConnImpl = mockGetDBConn
 	defer func() {
-		getDBConnImpl = backupGetDBConn
+		GetDBConnImpl = backupGetDBConn
 	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1513,20 +1513,63 @@ func (s MySQLSinkSuite) TestNewMySQLSink(c *check.C) {
 		c.Assert(err, check.IsNil)
 		return db, nil
 	}
-	backupGetDBConn := getDBConnImpl
-	getDBConnImpl = mockGetDBConn
+	backupGetDBConn := GetDBConnImpl
+	GetDBConnImpl = mockGetDBConn
 	defer func() {
-		getDBConnImpl = backupGetDBConn
+		GetDBConnImpl = backupGetDBConn
 	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
 	changefeed := "test-changefeed"
 	sinkURI, err := url.Parse("mysql://127.0.0.1:4000/?time-zone=UTC&worker-count=4")
 	c.Assert(err, check.IsNil)
 	rc := config.GetDefaultReplicaConfig()
 	f, err := filter.NewFilter(rc)
 	c.Assert(err, check.IsNil)
+	sink, err := newMySQLSink(ctx, changefeed, sinkURI, f, rc, map[string]string{})
+	c.Assert(err, check.IsNil)
+	err = sink.Close(ctx)
+	c.Assert(err, check.IsNil)
+}
+
+func (s MySQLSinkSuite) TestMySQLSinkClose(c *check.C) {
+	defer testleak.AfterTest(c)()
+
+	dbIndex := 0
+	mockGetDBConn := func(ctx context.Context, dsnStr string) (*sql.DB, error) {
+		defer func() {
+			dbIndex++
+		}()
+		if dbIndex == 0 {
+			// test db
+			db, err := mockTestDB()
+			c.Assert(err, check.IsNil)
+			return db, nil
+		}
+		// normal db
+		db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+		mock.ExpectClose()
+		c.Assert(err, check.IsNil)
+		return db, nil
+	}
+	backupGetDBConn := GetDBConnImpl
+	GetDBConnImpl = mockGetDBConn
+	defer func() {
+		GetDBConnImpl = backupGetDBConn
+	}()
+
+	ctx := context.Background()
+
+	changefeed := "test-changefeed"
+	sinkURI, err := url.Parse("mysql://127.0.0.1:4000/?time-zone=UTC&worker-count=4")
+	c.Assert(err, check.IsNil)
+	rc := config.GetDefaultReplicaConfig()
+	f, err := filter.NewFilter(rc)
+	c.Assert(err, check.IsNil)
+
+	// test sink.Close will work correctly even if the ctx pass in has not been cancel
 	sink, err := newMySQLSink(ctx, changefeed, sinkURI, f, rc, map[string]string{})
 	c.Assert(err, check.IsNil)
 	err = sink.Close(ctx)
