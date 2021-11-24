@@ -225,9 +225,9 @@ func (f *fileSink) EmitRowChangedEvents(ctx context.Context, rows ...*model.RowC
 	return f.emitRowChangedEvents(ctx, newTableStream, rows...)
 }
 
-func (f *fileSink) FlushRowChangedEvents(ctx context.Context, resolvedTs uint64) (uint64, error) {
+func (f *fileSink) FlushRowChangedEvents(ctx context.Context, tableID model.TableID, resolvedTs uint64) (uint64, error) {
 	log.Debug("[FlushRowChangedEvents] enter", zap.Uint64("ts", resolvedTs))
-	return f.flushRowChangedEvents(ctx, resolvedTs)
+	return f.flushRowChangedEvents(ctx, tableID, resolvedTs)
 }
 
 func (f *fileSink) EmitCheckpointTs(ctx context.Context, ts uint64) error {
@@ -349,7 +349,7 @@ func (f *fileSink) Close(ctx context.Context) error {
 	return nil
 }
 
-func (f *fileSink) Barrier(ctx context.Context) error {
+func (f *fileSink) Barrier(ctx context.Context, tableID model.TableID) error {
 	// Barrier does nothing because FlushRowChangedEvents in file sink has flushed
 	// all buffered events forcedlly.
 	return nil

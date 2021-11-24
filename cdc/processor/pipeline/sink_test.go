@@ -76,7 +76,7 @@ func (s *mockSink) EmitDDLEvent(ctx context.Context, ddl *model.DDLEvent) error 
 	panic("unreachable")
 }
 
-func (s *mockSink) FlushRowChangedEvents(ctx context.Context, resolvedTs uint64) (uint64, error) {
+func (s *mockSink) FlushRowChangedEvents(ctx context.Context, tableID model.TableID, resolvedTs uint64) (uint64, error) {
 	s.received = append(s.received, struct {
 		resolvedTs model.Ts
 		row        *model.RowChangedEvent
@@ -92,7 +92,7 @@ func (s *mockSink) Close(ctx context.Context) error {
 	return nil
 }
 
-func (s *mockSink) Barrier(ctx context.Context) error {
+func (s *mockSink) Barrier(ctx context.Context, tableID model.TableID) error {
 	return nil
 }
 

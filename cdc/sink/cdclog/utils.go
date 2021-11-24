@@ -172,7 +172,7 @@ func (l *logSink) emitRowChangedEvents(ctx context.Context, newUnit func(int64) 
 	return nil
 }
 
-func (l *logSink) flushRowChangedEvents(ctx context.Context, resolvedTs uint64) (uint64, error) {
+func (l *logSink) flushRowChangedEvents(ctx context.Context, tableID model.TableID, resolvedTs uint64) (uint64, error) {
 	// TODO update flush policy with size
 	select {
 	case <-ctx.Done():

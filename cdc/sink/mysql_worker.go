@@ -17,7 +17,6 @@ import (
 	"context"
 	"runtime"
 	"sync"
-	"sync/atomic"
 
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
@@ -35,7 +34,7 @@ type mysqlSinkWorker struct {
 	execDMLs         func(context.Context, []*model.RowChangedEvent, uint64, int) error
 	metricBucketSize prometheus.Counter
 	receiver         *notify.Receiver
-	checkpointTs     uint64
+	checkpointTs     map[model.TableID]model.Ts
 	closedCh         chan struct{}
 }
 
@@ -119,7 +118,8 @@ func (w *mysqlSinkWorker) run(ctx context.Context) (err error) {
 			txnNum = 0
 			return err
 		}
-		atomic.StoreUint64(&w.checkpointTs, lastCommitTs)
+		//atomic.StoreUint64(&w.checkpointTs, lastCommitTs)
+		w.checkpointTs[rows[0].Table.TableID] = lastCommitTs
 		toExecRows = toExecRows[:0]
 		w.metricBucketSize.Add(float64(txnNum))
 		txnNum = 0

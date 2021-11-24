@@ -151,7 +151,7 @@ func (ra *RedoApplier) consumeLogs(ctx context.Context) error {
 				lastSafeResolvedTs, lastResolvedTs = lastResolvedTs, redoLog.Row.CommitTs
 			}
 		}
-		_, err = s.FlushRowChangedEvents(ctx, lastSafeResolvedTs)
+		_, err = s.FlushRowChangedEvents(ctx, 0, lastSafeResolvedTs)
 		if err != nil {
 			return err
 		}
@@ -160,11 +160,11 @@ func (ra *RedoApplier) consumeLogs(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.FlushRowChangedEvents(ctx, resolvedTs)
+	_, err = s.FlushRowChangedEvents(ctx, 0, resolvedTs)
 	if err != nil {
 		return err
 	}
-	err = s.Barrier(ctx)
+	err = s.Barrier(ctx, 0)
 	if err != nil {
 		return err
 	}

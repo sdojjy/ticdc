@@ -35,7 +35,7 @@ const (
 // Manager manages table sinks, maintains the relationship between table sinks and backendSink.
 type Manager struct {
 	backendSink  Sink
-	checkpointTs model.Ts
+	checkpointTs map[model.TableID]model.Ts
 	tableSinks   map[model.TableID]*tableSink
 	tableSinksMu sync.Mutex
 
@@ -57,7 +57,7 @@ func NewManager(
 	drawbackChan := make(chan drawbackMsg, 16)
 	return &Manager{
 		backendSink:               newBufferSink(ctx, backendSink, errCh, checkpointTs, drawbackChan),
-		checkpointTs:              checkpointTs,
+		checkpointTs:              make(map[model.TableID]model.Ts),
 		tableSinks:                make(map[model.TableID]*tableSink),
 		drawbackChan:              drawbackChan,
 		captureAddr:               captureAddr,
@@ -90,11 +90,11 @@ func (m *Manager) Close(ctx context.Context) error {
 	return m.backendSink.Close(ctx)
 }
 
-func (m *Manager) getMinEmittedTs() model.Ts {
+func (m *Manager) getMinEmittedTs(tableID model.TableID) model.Ts {
 	m.tableSinksMu.Lock()
 	defer m.tableSinksMu.Unlock()
 	if len(m.tableSinks) == 0 {
-		return m.getCheckpointTs()
+		return m.getCheckpointTs(tableID)
 	}
 	minTs := model.Ts(math.MaxUint64)
 	for _, tableSink := range m.tableSinks {
@@ -106,24 +106,26 @@ func (m *Manager) getMinEmittedTs() model.Ts {
 	return minTs
 }
 
-func (m *Manager) flushBackendSink(ctx context.Context) (model.Ts, error) {
+func (m *Manager) flushBackendSink(ctx context.Context, tableID model.TableID) (model.Ts, error) {
 	// NOTICE: Because all table sinks will try to flush backend sink,
 	// which will cause a lot of lock contention and blocking in high concurrency cases.
 	// So here we use flushing as a lightweight lock to improve the lock competition problem.
 	if !atomic.CompareAndSwapInt64(&m.flushing, 0, 1) {
-		return m.getCheckpointTs(), nil
+		return m.getCheckpointTs(tableID), nil
 	}
 	m.flushMu.Lock()
 	defer func() {
 		m.flushMu.Unlock()
 		atomic.StoreInt64(&m.flushing, 0)
 	}()
-	minEmittedTs := m.getMinEmittedTs()
-	checkpointTs, err := m.backendSink.FlushRowChangedEvents(ctx, minEmittedTs)
+	minEmittedTs := m.getMinEmittedTs(tableID)
+	checkpointTs, err := m.backendSink.FlushRowChangedEvents(ctx, tableID, minEmittedTs)
 	if err != nil {
-		return m.getCheckpointTs(), errors.Trace(err)
+		return m.getCheckpointTs(tableID), errors.Trace(err)
 	}
-	atomic.StoreUint64(&m.checkpointTs, checkpointTs)
+	//todo: lock
+	m.checkpointTs[tableID] = checkpointTs
+	//atomic.StoreUint64(&m.checkpointTs, checkpointTs)
 	return checkpointTs, nil
 }
 
@@ -142,11 +144,12 @@ func (m *Manager) destroyTableSink(ctx context.Context, tableID model.TableID) e
 		return ctx.Err()
 	case <-callback:
 	}
-	return m.backendSink.Barrier(ctx)
+	return m.backendSink.Barrier(ctx, tableID)
 }
 
-func (m *Manager) getCheckpointTs() uint64 {
-	return atomic.LoadUint64(&m.checkpointTs)
+func (m *Manager) getCheckpointTs(tableID model.TableID) uint64 {
+	//return atomic.LoadUint64(&m.checkpointTs)
+	return m.checkpointTs[tableID]
 }
 
 type drawbackMsg struct {
