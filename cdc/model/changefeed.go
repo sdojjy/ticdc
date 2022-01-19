@@ -22,11 +22,11 @@ import (
 
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
-	"github.com/pingcap/tidb/store/tikv/oracle"
 	"github.com/pingcap/tiflow/pkg/config"
 	"github.com/pingcap/tiflow/pkg/cyclic/mark"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/version"
+	"github.com/tikv/client-go/v2/oracle"
 	"go.uber.org/zap"
 )
 
@@ -154,7 +154,7 @@ func (info *ChangeFeedInfo) GetStartTs() uint64 {
 		return info.StartTs
 	}
 
-	return oracle.EncodeTSO(info.CreateTime.Unix() * 1000)
+	return oracle.GoTimeToTS(info.CreateTime)
 }
 
 // GetCheckpointTs returns CheckpointTs if it's specified in ChangeFeedStatus, otherwise StartTs is returned.

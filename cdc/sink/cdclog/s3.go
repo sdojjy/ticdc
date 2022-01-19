@@ -19,11 +19,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pingcap/br/pkg/storage"
 	"github.com/pingcap/errors"
-	"github.com/pingcap/kvproto/pkg/backup"
+	backup "github.com/pingcap/kvproto/pkg/brpb"
 	"github.com/pingcap/log"
 	parsemodel "github.com/pingcap/parser/model"
+	"github.com/pingcap/tidb/br/pkg/storage"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/sink/codec"
 	cerror "github.com/pingcap/tiflow/pkg/errors"

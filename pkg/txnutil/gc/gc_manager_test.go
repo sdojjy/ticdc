@@ -22,10 +22,10 @@ import (
 
 	"github.com/pingcap/check"
 	"github.com/pingcap/errors"
-	"github.com/pingcap/tidb/store/tikv/oracle"
 	cdcContext "github.com/pingcap/tiflow/pkg/context"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/util/testleak"
+	"github.com/tikv/client-go/v2/oracle"
 )
 
 func Test(t *testing.T) {

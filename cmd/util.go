@@ -31,7 +31,6 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
-	"github.com/pingcap/tidb/store/tikv/oracle"
 	"github.com/pingcap/tiflow/cdc"
 	"github.com/pingcap/tiflow/cdc/entry"
 	"github.com/pingcap/tiflow/cdc/kv"
@@ -46,6 +45,7 @@ import (
 	"github.com/pingcap/tiflow/pkg/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"github.com/tikv/client-go/v2/oracle"
 	"go.etcd.io/etcd/clientv3/concurrency"
 	"go.uber.org/zap"
 )

@@ -21,7 +21,6 @@ import (
 	"github.com/pingcap/check"
 	"github.com/pingcap/errors"
 	timodel "github.com/pingcap/parser/model"
-	"github.com/pingcap/tidb/store/tikv/oracle"
 	"github.com/pingcap/tiflow/cdc/entry"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/pkg/config"
@@ -31,6 +30,7 @@ import (
 	"github.com/pingcap/tiflow/pkg/txnutil/gc"
 	"github.com/pingcap/tiflow/pkg/util/testleak"
 	"github.com/pingcap/tiflow/pkg/version"
+	"github.com/tikv/client-go/v2/oracle"
 )
 
 type mockDDLPuller struct {

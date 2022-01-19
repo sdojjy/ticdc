@@ -18,9 +18,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/pingcap/tidb/store/tikv"
 	"github.com/pingcap/tiflow/cdc/kv"
 	"github.com/spf13/cobra"
+	"github.com/tikv/client-go/v2/tikv"
 	pd "github.com/tikv/pd/client"
 )
 

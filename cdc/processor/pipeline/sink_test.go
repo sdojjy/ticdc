@@ -20,13 +20,13 @@ import (
 	"time"
 
 	"github.com/pingcap/check"
-	"github.com/pingcap/tidb/store/tikv/oracle"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/pkg/config"
 	cdcContext "github.com/pingcap/tiflow/pkg/context"
 	cerrors "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/pipeline"
 	"github.com/pingcap/tiflow/pkg/util/testleak"
+	"github.com/tikv/client-go/v2/oracle"
 )
 
 func TestSuite(t *testing.T) {

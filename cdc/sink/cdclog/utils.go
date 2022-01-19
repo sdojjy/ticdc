@@ -20,8 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pingcap/br/pkg/storage"
 	"github.com/pingcap/log"
+	"github.com/pingcap/tidb/br/pkg/storage"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/sink/codec"
 	"github.com/pingcap/tiflow/pkg/quotes"

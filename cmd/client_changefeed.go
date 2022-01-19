@@ -25,7 +25,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
-	"github.com/pingcap/tidb/store/tikv/oracle"
 	"github.com/pingcap/tiflow/cdc"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/pkg/config"
@@ -38,6 +37,7 @@ import (
 	"github.com/r3labs/diff"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"github.com/tikv/client-go/v2/oracle"
 	"go.uber.org/zap"
 )
 

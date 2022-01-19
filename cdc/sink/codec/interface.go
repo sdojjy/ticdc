@@ -19,8 +19,8 @@ import (
 	"time"
 
 	"github.com/pingcap/log"
-	"github.com/pingcap/tidb/store/tikv/oracle"
 	"github.com/pingcap/tiflow/cdc/model"
+	"github.com/tikv/client-go/v2/oracle"
 	"go.uber.org/zap"
 )
 

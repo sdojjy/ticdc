@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/pingcap/check"
-	"github.com/pingcap/tidb/store/tikv/oracle"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/pkg/config"
 	cdcContext "github.com/pingcap/tiflow/pkg/context"
@@ -30,6 +29,7 @@ import (
 	"github.com/pingcap/tiflow/pkg/orchestrator"
 	"github.com/pingcap/tiflow/pkg/txnutil/gc"
 	"github.com/pingcap/tiflow/pkg/util/testleak"
+	"github.com/tikv/client-go/v2/oracle"
 )
 
 var _ = check.Suite(&ownerSuite{})
