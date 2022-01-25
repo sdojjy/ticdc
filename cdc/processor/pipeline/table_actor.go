@@ -20,6 +20,7 @@ import (
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/entry"
+	"github.com/pingcap/tiflow/cdc/kv"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/redo"
 	"github.com/pingcap/tiflow/cdc/sink"
@@ -71,8 +72,9 @@ type tableActor struct {
 	sortNode   *sorterNode
 	sinkNode   *sinkNode
 
-	nodes   []*ActorNode
-	actorID actor.ID
+	nodes        []*ActorNode
+	actorID      actor.ID
+	regionRouter kv.LimitRegionRouter
 }
 
 // NewTableActor creates a table actor.
@@ -83,6 +85,7 @@ func NewTableActor(cdcCtx cdcContext.Context,
 	replicaInfo *model.TableReplicaInfo,
 	sink sink.Sink,
 	targetTs model.Ts,
+	regionRouter kv.LimitRegionRouter,
 ) (TablePipeline, error) {
 	config := cdcCtx.ChangefeedVars().Info.Config
 	cyclicEnabled := config.Cyclic != nil && config.Cyclic.IsEnabled()
@@ -117,6 +120,7 @@ func NewTableActor(cdcCtx cdcContext.Context,
 		vars:             vars,
 		tableActorRouter: vars.TableActorSystem.Router(),
 		actorID:          actorID,
+		regionRouter:     regionRouter,
 	}
 
 	startTime := time.Now()
@@ -201,7 +205,7 @@ func (t *tableActor) start(ctx context.Context) error {
 		zap.String("tableName", t.tableName),
 		zap.Uint64("quota", t.memoryQuota))
 
-	pullerNode := newPullerNode(t.tableID, t.replicaInfo, t.tableName, t.info.ID)
+	pullerNode := newPullerNode(t.tableID, t.replicaInfo, t.tableName, t.info.ID, t.regionRouter)
 	pCtx := NewContext(ctx, t.tableName, t.vars.TableActorSystem.Router(), t.actorID, t.info, t.vars)
 	if err := pullerNode.Init(pCtx); err != nil {
 		log.Error("puller fails to start",
