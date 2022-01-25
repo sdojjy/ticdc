@@ -28,6 +28,7 @@ const (
 	TypeStop
 	TypeBarrier
 	TypeSorterTask
+	TypeStopSink
 	// Add a new type when adding a new message.
 )
 
@@ -71,5 +72,12 @@ func SorterMessage(task sorter.Task) Message {
 	return Message{
 		Tp:         TypeSorterTask,
 		SorterTask: task,
+	}
+}
+
+// StopSinkMessage creates the message of Stop the table actor sink
+func StopSinkMessage() Message {
+	return Message{
+		Tp: TypeStopSink,
 	}
 }

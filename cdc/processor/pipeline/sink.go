@@ -100,6 +100,7 @@ func newSinkNode(tableID model.TableID, sink sink.Sink, startTs model.Ts, target
 
 func (n *sinkNode) ResolvedTs() model.Ts   { return atomic.LoadUint64(&n.resolvedTs) }
 func (n *sinkNode) CheckpointTs() model.Ts { return atomic.LoadUint64(&n.checkpointTs) }
+func (n *sinkNode) BarrierTs() model.Ts    { return atomic.LoadUint64(&n.barrierTs) }
 func (n *sinkNode) Status() TableStatus    { return n.status.Load() }
 
 func (n *sinkNode) Init(ctx pipeline.NodeContext) error {
@@ -360,15 +361,28 @@ func (n *sinkNode) HandleMessage(ctx context.Context, msg pipeline.Message) (boo
 			}
 		}
 	case pipeline.MessageTypeBarrier:
-		n.barrierTs = msg.BarrierTs
-		if err := n.flushSink(ctx, n.resolvedTs); err != nil {
+		if err := n.UpdateBarrierTs(ctx, msg.BarrierTs); err != nil {
 			return false, errors.Trace(err)
 		}
 	}
 	return true, nil
 }
 
+func (n *sinkNode) UpdateBarrierTs(ctx context.Context, ts model.Ts) error {
+	atomic.StoreUint64(&n.barrierTs, ts)
+	if err := n.flushSink(ctx, n.resolvedTs); err != nil {
+		return errors.Trace(err)
+	}
+	return nil
+}
+
 func (n *sinkNode) Destroy(ctx pipeline.NodeContext) error {
+	n.status.Store(TableStatusStopped)
+	n.flowController.Abort()
+	return n.ReleaseResource(ctx)
+}
+
+func (n *sinkNode) ReleaseResource(ctx context.Context) error {
 	n.status.Store(TableStatusStopped)
 	n.flowController.Abort()
 	return n.sink.Close(ctx)

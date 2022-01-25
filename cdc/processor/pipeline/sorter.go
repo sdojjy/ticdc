@@ -282,9 +282,7 @@ func (n *sorterNode) TryHandleDataMessage(ctx context.Context, msg pipeline.Mess
 		n.sorter.AddEntry(ctx, msg.PolymorphicEvent)
 		return true, nil
 	case pipeline.MessageTypeBarrier:
-		if msg.BarrierTs > n.barrierTs {
-			n.barrierTs = msg.BarrierTs
-		}
+		n.UpdateBarrierTs(msg.BarrierTs)
 		fallthrough
 	default:
 		// todo: remove feature switcher after GA
@@ -296,8 +294,14 @@ func (n *sorterNode) TryHandleDataMessage(ctx context.Context, msg pipeline.Mess
 	}
 }
 
-func (n *sorterNode) Destroy(ctx pipeline.NodeContext) error {
-	defer tableMemoryHistogram.DeleteLabelValues(ctx.ChangefeedVars().ID, ctx.GlobalVars().CaptureInfo.AdvertiseAddr)
+func (n *sorterNode) UpdateBarrierTs(barrierTs model.Ts) {
+	if barrierTs > atomic.LoadUint64(&n.barrierTs) {
+		atomic.StoreUint64(&n.barrierTs, barrierTs)
+	}
+}
+
+func (n *sorterNode) ReleaseResource(ctx context.Context, changefeedID, captureAddr string) {
+	defer tableMemoryHistogram.DeleteLabelValues(changefeedID, captureAddr)
 	n.cancel()
 	if n.cleanRouter != nil {
 		// Clean up data when the table sorter is canceled.
@@ -310,6 +314,11 @@ func (n *sorterNode) Destroy(ctx pipeline.NodeContext) error {
 	// the flowController will be blocked in a background goroutine,
 	// We need to abort the flowController manually in the nodeRunner
 	n.flowController.Abort()
+}
+
+func (n *sorterNode) Destroy(ctx pipeline.NodeContext) error {
+	n.cancel()
+	n.ReleaseResource(ctx, ctx.ChangefeedVars().ID, ctx.GlobalVars().CaptureInfo.AdvertiseAddr)
 	return n.eg.Wait()
 }
 
