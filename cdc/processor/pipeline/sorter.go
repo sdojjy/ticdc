@@ -97,7 +97,7 @@ func createSorter(ctx pipeline.NodeContext, tableName string, tableID model.Tabl
 	case model.SortUnified, model.SortInFile /* `file` becomes an alias of `unified` for backward compatibility */ :
 		if sortEngine == model.SortInFile {
 			log.Warn("File sorter is obsolete and replaced by unified sorter. Please revise your changefeed settings",
-				zap.String("changefeed", ctx.ChangefeedVars().ID), zap.String("tableName", tableName))
+				zap.String("changefeed", ctx.ChangefeedVars().ID.String()), zap.String("tableName", tableName))
 		}
 
 		if config.GetGlobalServerConfig().Debug.EnableDBSorter {
@@ -154,7 +154,7 @@ func (n *sorterNode) start(
 		lastSendResolvedTsTime := time.Now() // the time at which we last sent a resolved-ts.
 		lastCRTs := uint64(0)                // the commit-ts of the last row changed we sent.
 
-		metricsTableMemoryHistogram := tableMemoryHistogram.WithLabelValues(ctx.ChangefeedVars().ID)
+		metricsTableMemoryHistogram := tableMemoryHistogram.WithLabelValues(ctx.ChangefeedVars().ID.ID)
 		metricsTicker := time.NewTicker(flushMemoryMetricsDuration)
 		defer metricsTicker.Stop()
 
@@ -315,7 +315,7 @@ func (n *sorterNode) releaseResource(changefeedID string) {
 
 func (n *sorterNode) Destroy(ctx pipeline.NodeContext) error {
 	n.cancel()
-	n.releaseResource(ctx.ChangefeedVars().ID)
+	n.releaseResource(ctx.ChangefeedVars().ID.ID)
 	return n.eg.Wait()
 }
 

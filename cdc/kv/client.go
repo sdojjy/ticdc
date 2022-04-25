@@ -29,6 +29,7 @@ import (
 	"github.com/pingcap/kvproto/pkg/kvrpcpb"
 	"github.com/pingcap/kvproto/pkg/metapb"
 	"github.com/pingcap/log"
+	"github.com/pingcap/tiflow/cdc/contextutil"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/pkg/config"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
@@ -36,7 +37,6 @@ import (
 	"github.com/pingcap/tiflow/pkg/regionspan"
 	"github.com/pingcap/tiflow/pkg/retry"
 	"github.com/pingcap/tiflow/pkg/txnutil"
-	"github.com/pingcap/tiflow/pkg/util"
 	"github.com/pingcap/tiflow/pkg/version"
 	"github.com/prometheus/client_golang/prometheus"
 	tidbkv "github.com/tikv/client-go/v2/kv"
@@ -545,7 +545,7 @@ func (s *eventFeedSession) eventFeed(ctx context.Context, ts uint64) error {
 		}
 	})
 
-	tableID, tableName := util.TableIDFromCtx(ctx)
+	tableID, tableName := contextutil.TableIDFromCtx(ctx)
 	g.Go(func() error {
 		timer := time.NewTimer(defaultCheckRegionRateLimitInterval)
 		defer timer.Stop()
@@ -1149,8 +1149,8 @@ func (s *eventFeedSession) receiveFromStream(
 		}
 	}()
 
-	changefeedID := util.ChangefeedIDFromCtx(ctx)
-	metricSendEventBatchResolvedSize := batchResolvedEventSize.WithLabelValues(changefeedID)
+	changefeedID := contextutil.ChangefeedIDFromCtx(ctx)
+	metricSendEventBatchResolvedSize := batchResolvedEventSize.WithLabelValues(changefeedID.ID)
 
 	// always create a new region worker, because `receiveFromStream` is ensured
 	// to call exactly once from outter code logic

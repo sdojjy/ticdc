@@ -41,6 +41,7 @@ type queryProcessorOptions struct {
 	apiClient  apiv1client.APIV1Interface
 
 	changefeedID     string
+	namespace        string
 	captureID        string
 	runWithAPIClient bool
 }
@@ -99,7 +100,7 @@ func (o *queryProcessorOptions) addFlags(cmd *cobra.Command) {
 
 // run cli cmd with etcd client
 func (o *queryProcessorOptions) runCliWithEtcdClient(ctx context.Context, cmd *cobra.Command) error {
-	_, status, err := o.etcdClient.GetTaskStatus(ctx, o.changefeedID, o.captureID)
+	_, status, err := o.etcdClient.GetTaskStatus(ctx, model.ChangeFeedID{Namespace: o.namespace, ID: o.changefeedID}, o.captureID)
 	if err != nil && cerror.ErrTaskStatusNotExists.Equal(err) {
 		return err
 	}

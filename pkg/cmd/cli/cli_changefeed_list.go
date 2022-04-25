@@ -14,9 +14,6 @@
 package cli
 
 import (
-	"encoding/json"
-
-	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/api"
 	"github.com/pingcap/tiflow/pkg/cmd/context"
 	"github.com/pingcap/tiflow/pkg/cmd/factory"
@@ -24,7 +21,6 @@ import (
 	"github.com/pingcap/tiflow/pkg/etcd"
 	"github.com/pingcap/tiflow/pkg/security"
 	"github.com/spf13/cobra"
-	"go.uber.org/zap"
 )
 
 // changefeedCommonInfo holds some common used information of a changefeed.
@@ -93,24 +89,24 @@ func (o *listChangefeedOptions) run(cmd *cobra.Command) error {
 
 	cfs := make([]*changefeedCommonInfo, 0, len(changefeedIDs))
 
-	for id := range changefeedIDs {
-		cfci := &changefeedCommonInfo{ID: id}
-
-		resp, err := sendOwnerChangefeedQuery(ctx, o.etcdClient, id, o.credential)
-		if err != nil {
-			// if no capture is available, the query will fail, just add a warning here
-			log.Warn("query changefeed info failed", zap.String("error", err.Error()))
-		} else {
-			info := &api.ChangefeedResp{}
-			err = json.Unmarshal([]byte(resp), info)
-			if err != nil {
-				return err
-			}
-
-			cfci.Summary = info
-		}
-		cfs = append(cfs, cfci)
-	}
+	//for id := range changefeedIDs {
+	//	cfci := &changefeedCommonInfo{ID: id}
+	//
+	//	resp, err := sendOwnerChangefeedQuery(ctx, o.etcdClient, id, o.credential)
+	//	if err != nil {
+	//		// if no capture is available, the query will fail, just add a warning here
+	//		log.Warn("query changefeed info failed", zap.String("error", err.Error()))
+	//	} else {
+	//		info := &api.ChangefeedResp{}
+	//		err = json.Unmarshal([]byte(resp), info)
+	//		if err != nil {
+	//			return err
+	//		}
+	//
+	//		cfci.Summary = info
+	//	}
+	//	cfs = append(cfs, cfci)
+	//}
 
 	return util.JSONPrint(cmd, cfs)
 }

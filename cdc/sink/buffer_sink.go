@@ -22,9 +22,9 @@ import (
 
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
+	"github.com/pingcap/tiflow/cdc/contextutil"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/sink/metrics"
-	"github.com/pingcap/tiflow/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
@@ -144,7 +144,7 @@ func (b *bufferSink) runOnce(ctx context.Context, state *runState) (bool, error)
 		log.Warn("flush row changed events too slow",
 			zap.Int("batchSize", batchSize),
 			zap.Duration("duration", elapsed),
-			util.ZapFieldChangefeed(ctx))
+			contextutil.ZapFieldChangefeed(ctx))
 	}
 
 	return true, nil

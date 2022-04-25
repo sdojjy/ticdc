@@ -151,7 +151,7 @@ func (h *openAPI) ListChangefeed(c *gin.Context) {
 		}
 
 		resp := &model.ChangefeedCommonInfo{
-			ID: cfID,
+			//ID: cfID,
 		}
 
 		if cfInfo != nil {
@@ -181,60 +181,60 @@ func (h *openAPI) ListChangefeed(c *gin.Context) {
 // @Failure 500,400 {object} model.HTTPError
 // @Router /api/v1/changefeeds/{changefeed_id} [get]
 func (h *openAPI) GetChangefeed(c *gin.Context) {
-	if !h.capture.IsOwner() {
-		h.forwardToOwner(c)
-		return
-	}
-
-	ctx := c.Request.Context()
-	changefeedID := c.Param(apiOpVarChangefeedID)
-	if err := model.ValidateChangefeedID(changefeedID); err != nil {
-		_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid changefeed_id: %s", changefeedID))
-		return
-	}
-
-	info, err := h.statusProvider().GetChangeFeedInfo(ctx, changefeedID)
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-
-	status, err := h.statusProvider().GetChangeFeedStatus(ctx, changefeedID)
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-
-	processorInfos, err := h.statusProvider().GetAllTaskStatuses(ctx, changefeedID)
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-
-	taskStatus := make([]model.CaptureTaskStatus, 0, len(processorInfos))
-	for captureID, status := range processorInfos {
-		tables := make([]int64, 0)
-		for tableID := range status.Tables {
-			tables = append(tables, tableID)
-		}
-		taskStatus = append(taskStatus, model.CaptureTaskStatus{CaptureID: captureID, Tables: tables, Operation: status.Operation})
-	}
-
-	changefeedDetail := &model.ChangefeedDetail{
-		ID:             changefeedID,
-		SinkURI:        info.SinkURI,
-		CreateTime:     model.JSONTime(info.CreateTime),
-		StartTs:        info.StartTs,
-		TargetTs:       info.TargetTs,
-		CheckpointTSO:  status.CheckpointTs,
-		CheckpointTime: model.JSONTime(oracle.GetTimeFromTS(status.CheckpointTs)),
-		ResolvedTs:     status.ResolvedTs,
-		Engine:         info.Engine,
-		FeedState:      info.State,
-		TaskStatus:     taskStatus,
-	}
-
-	c.IndentedJSON(http.StatusOK, changefeedDetail)
+	//if !h.capture.IsOwner() {
+	//	h.forwardToOwner(c)
+	//	return
+	//}
+	//
+	//ctx := c.Request.Context()
+	//changefeedID := c.Param(apiOpVarChangefeedID)
+	//if err := model.ValidateChangefeedID(changefeedID); err != nil {
+	//	_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid changefeed_id: %s", changefeedID))
+	//	return
+	//}
+	//
+	//info, err := h.statusProvider().GetChangeFeedInfo(ctx, changefeedID)
+	//if err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//
+	//status, err := h.statusProvider().GetChangeFeedStatus(ctx, changefeedID)
+	//if err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//
+	//processorInfos, err := h.statusProvider().GetAllTaskStatuses(ctx, changefeedID)
+	//if err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//
+	//taskStatus := make([]model.CaptureTaskStatus, 0, len(processorInfos))
+	//for captureID, status := range processorInfos {
+	//	tables := make([]int64, 0)
+	//	for tableID := range status.Tables {
+	//		tables = append(tables, tableID)
+	//	}
+	//	taskStatus = append(taskStatus, model.CaptureTaskStatus{CaptureID: captureID, Tables: tables, Operation: status.Operation})
+	//}
+	//
+	//changefeedDetail := &model.ChangefeedDetail{
+	//	ID:             changefeedID,
+	//	SinkURI:        info.SinkURI,
+	//	CreateTime:     model.JSONTime(info.CreateTime),
+	//	StartTs:        info.StartTs,
+	//	TargetTs:       info.TargetTs,
+	//	CheckpointTSO:  status.CheckpointTs,
+	//	CheckpointTime: model.JSONTime(oracle.GetTimeFromTS(status.CheckpointTs)),
+	//	ResolvedTs:     status.ResolvedTs,
+	//	Engine:         info.Engine,
+	//	FeedState:      info.State,
+	//	TaskStatus:     taskStatus,
+	//}
+	//
+	//c.IndentedJSON(http.StatusOK, changefeedDetail)
 }
 
 // CreateChangefeed creates a changefeed
@@ -248,38 +248,38 @@ func (h *openAPI) GetChangefeed(c *gin.Context) {
 // @Failure 500,400 {object} model.HTTPError
 // @Router	/api/v1/changefeeds [post]
 func (h *openAPI) CreateChangefeed(c *gin.Context) {
-	if !h.capture.IsOwner() {
-		h.forwardToOwner(c)
-		return
-	}
-
-	ctx := c.Request.Context()
-	var changefeedConfig model.ChangefeedConfig
-	if err := c.BindJSON(&changefeedConfig); err != nil {
-		_ = c.Error(cerror.ErrAPIInvalidParam.Wrap(err))
-		return
-	}
-
-	info, err := verifyCreateChangefeedConfig(c, changefeedConfig, h.capture)
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-
-	infoStr, err := info.Marshal()
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-
-	err = h.capture.EtcdClient.CreateChangefeedInfo(ctx, info, changefeedConfig.ID)
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-
-	log.Info("Create changefeed successfully!", zap.String("id", changefeedConfig.ID), zap.String("changefeed", infoStr))
-	c.Status(http.StatusAccepted)
+	//if !h.capture.IsOwner() {
+	//	h.forwardToOwner(c)
+	//	return
+	//}
+	//
+	//ctx := c.Request.Context()
+	//var changefeedConfig model.ChangefeedConfig
+	//if err := c.BindJSON(&changefeedConfig); err != nil {
+	//	_ = c.Error(cerror.ErrAPIInvalidParam.Wrap(err))
+	//	return
+	//}
+	//
+	//info, err := verifyCreateChangefeedConfig(c, changefeedConfig, h.capture)
+	//if err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//
+	//infoStr, err := info.Marshal()
+	//if err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//
+	//err = h.capture.EtcdClient.CreateChangefeedInfo(ctx, info, changefeedConfig.ID)
+	//if err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//
+	//log.Info("Create changefeed successfully!", zap.String("id", changefeedConfig.ID), zap.String("changefeed", infoStr))
+	//c.Status(http.StatusAccepted)
 }
 
 // PauseChangefeed pauses a changefeed
@@ -293,35 +293,35 @@ func (h *openAPI) CreateChangefeed(c *gin.Context) {
 // @Failure 500,400 {object} model.HTTPError
 // @Router /api/v1/changefeeds/{changefeed_id}/pause [post]
 func (h *openAPI) PauseChangefeed(c *gin.Context) {
-	if !h.capture.IsOwner() {
-		h.forwardToOwner(c)
-		return
-	}
-
-	ctx := c.Request.Context()
-
-	changefeedID := c.Param(apiOpVarChangefeedID)
-	if err := model.ValidateChangefeedID(changefeedID); err != nil {
-		_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid changefeed_id: %s", changefeedID))
-		return
-	}
-	// check if the changefeed exists
-	_, err := h.statusProvider().GetChangeFeedStatus(ctx, changefeedID)
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-
-	job := model.AdminJob{
-		CfID: changefeedID,
-		Type: model.AdminStop,
-	}
-
-	if err := handleOwnerJob(ctx, h.capture, job); err != nil {
-		_ = c.Error(err)
-		return
-	}
-	c.Status(http.StatusAccepted)
+	//if !h.capture.IsOwner() {
+	//	h.forwardToOwner(c)
+	//	return
+	//}
+	//
+	//ctx := c.Request.Context()
+	//
+	//changefeedID := c.Param(apiOpVarChangefeedID)
+	//if err := model.ValidateChangefeedID(changefeedID); err != nil {
+	//	_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid changefeed_id: %s", changefeedID))
+	//	return
+	//}
+	//// check if the changefeed exists
+	//_, err := h.statusProvider().GetChangeFeedStatus(ctx, changefeedID)
+	//if err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//
+	//job := model.AdminJob{
+	//	CfID: changefeedID,
+	//	Type: model.AdminStop,
+	//}
+	//
+	//if err := handleOwnerJob(ctx, h.capture, job); err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//c.Status(http.StatusAccepted)
 }
 
 // ResumeChangefeed resumes a changefeed
@@ -335,34 +335,34 @@ func (h *openAPI) PauseChangefeed(c *gin.Context) {
 // @Failure 500,400 {object} model.HTTPError
 // @Router	/api/v1/changefeeds/{changefeed_id}/resume [post]
 func (h *openAPI) ResumeChangefeed(c *gin.Context) {
-	if !h.capture.IsOwner() {
-		h.forwardToOwner(c)
-		return
-	}
-
-	ctx := c.Request.Context()
-	changefeedID := c.Param(apiOpVarChangefeedID)
-	if err := model.ValidateChangefeedID(changefeedID); err != nil {
-		_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid changefeed_id: %s", changefeedID))
-		return
-	}
-	// check if the changefeed exists
-	_, err := h.statusProvider().GetChangeFeedStatus(ctx, changefeedID)
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-
-	job := model.AdminJob{
-		CfID: changefeedID,
-		Type: model.AdminResume,
-	}
-
-	if err := handleOwnerJob(ctx, h.capture, job); err != nil {
-		_ = c.Error(err)
-		return
-	}
-	c.Status(http.StatusAccepted)
+	//if !h.capture.IsOwner() {
+	//	h.forwardToOwner(c)
+	//	return
+	//}
+	//
+	//ctx := c.Request.Context()
+	//changefeedID := c.Param(apiOpVarChangefeedID)
+	//if err := model.ValidateChangefeedID(changefeedID); err != nil {
+	//	_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid changefeed_id: %s", changefeedID))
+	//	return
+	//}
+	//// check if the changefeed exists
+	//_, err := h.statusProvider().GetChangeFeedStatus(ctx, changefeedID)
+	//if err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//
+	//job := model.AdminJob{
+	//	CfID: changefeedID,
+	//	Type: model.AdminResume,
+	//}
+	//
+	//if err := handleOwnerJob(ctx, h.capture, job); err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//c.Status(http.StatusAccepted)
 }
 
 // UpdateChangefeed updates a changefeed
@@ -382,49 +382,49 @@ func (h *openAPI) ResumeChangefeed(c *gin.Context) {
 // @Failure 500,400 {object} model.HTTPError
 // @Router /api/v1/changefeeds/{changefeed_id} [put]
 func (h *openAPI) UpdateChangefeed(c *gin.Context) {
-	if !h.capture.IsOwner() {
-		h.forwardToOwner(c)
-		return
-	}
-
-	ctx := c.Request.Context()
-	changefeedID := c.Param(apiOpVarChangefeedID)
-
-	if err := model.ValidateChangefeedID(changefeedID); err != nil {
-		_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid changefeed_id: %s", changefeedID))
-		return
-	}
-	info, err := h.statusProvider().GetChangeFeedInfo(ctx, changefeedID)
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-	if info.State != model.StateStopped {
-		_ = c.Error(cerror.ErrChangefeedUpdateRefused.GenWithStackByArgs("can only update changefeed config when it is stopped"))
-		return
-	}
-
-	// can only update target-ts, sink-uri
-	// filter_rules, ignore_txn_start_ts, mounter_worker_num, sink_config
-	var changefeedConfig model.ChangefeedConfig
-	if err = c.BindJSON(&changefeedConfig); err != nil {
-		_ = c.Error(err)
-		return
-	}
-
-	newInfo, err := verifyUpdateChangefeedConfig(ctx, changefeedConfig, info)
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-
-	err = h.capture.EtcdClient.SaveChangeFeedInfo(ctx, newInfo, changefeedID)
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-
-	c.Status(http.StatusAccepted)
+	//if !h.capture.IsOwner() {
+	//	h.forwardToOwner(c)
+	//	return
+	//}
+	//
+	//ctx := c.Request.Context()
+	//changefeedID := c.Param(apiOpVarChangefeedID)
+	//
+	//if err := model.ValidateChangefeedID(changefeedID); err != nil {
+	//	_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid changefeed_id: %s", changefeedID))
+	//	return
+	//}
+	//info, err := h.statusProvider().GetChangeFeedInfo(ctx, changefeedID)
+	//if err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//if info.State != model.StateStopped {
+	//	_ = c.Error(cerror.ErrChangefeedUpdateRefused.GenWithStackByArgs("can only update changefeed config when it is stopped"))
+	//	return
+	//}
+	//
+	//// can only update target-ts, sink-uri
+	//// filter_rules, ignore_txn_start_ts, mounter_worker_num, sink_config
+	//var changefeedConfig model.ChangefeedConfig
+	//if err = c.BindJSON(&changefeedConfig); err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//
+	//newInfo, err := verifyUpdateChangefeedConfig(ctx, changefeedConfig, info)
+	//if err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//
+	//err = h.capture.EtcdClient.SaveChangeFeedInfo(ctx, newInfo, changefeedID)
+	//if err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//
+	//c.Status(http.StatusAccepted)
 }
 
 // RemoveChangefeed removes a changefeed
@@ -438,34 +438,34 @@ func (h *openAPI) UpdateChangefeed(c *gin.Context) {
 // @Failure 500,400 {object} model.HTTPError
 // @Router	/api/v1/changefeeds/{changefeed_id} [delete]
 func (h *openAPI) RemoveChangefeed(c *gin.Context) {
-	if !h.capture.IsOwner() {
-		h.forwardToOwner(c)
-		return
-	}
-
-	ctx := c.Request.Context()
-	changefeedID := c.Param(apiOpVarChangefeedID)
-	if err := model.ValidateChangefeedID(changefeedID); err != nil {
-		_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid changefeed_id: %s", changefeedID))
-		return
-	}
-	// check if the changefeed exists
-	_, err := h.statusProvider().GetChangeFeedStatus(ctx, changefeedID)
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-
-	job := model.AdminJob{
-		CfID: changefeedID,
-		Type: model.AdminRemove,
-	}
-
-	if err := handleOwnerJob(ctx, h.capture, job); err != nil {
-		_ = c.Error(err)
-		return
-	}
-	c.Status(http.StatusAccepted)
+	//if !h.capture.IsOwner() {
+	//	h.forwardToOwner(c)
+	//	return
+	//}
+	//
+	//ctx := c.Request.Context()
+	//changefeedID := c.Param(apiOpVarChangefeedID)
+	//if err := model.ValidateChangefeedID(changefeedID); err != nil {
+	//	_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid changefeed_id: %s", changefeedID))
+	//	return
+	//}
+	//// check if the changefeed exists
+	//_, err := h.statusProvider().GetChangeFeedStatus(ctx, changefeedID)
+	//if err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//
+	//job := model.AdminJob{
+	//	CfID: changefeedID,
+	//	Type: model.AdminRemove,
+	//}
+	//
+	//if err := handleOwnerJob(ctx, h.capture, job); err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//c.Status(http.StatusAccepted)
 }
 
 // RebalanceTables rebalances tables
@@ -479,30 +479,30 @@ func (h *openAPI) RemoveChangefeed(c *gin.Context) {
 // @Failure 500,400 {object} model.HTTPError
 // @Router /api/v1/changefeeds/{changefeed_id}/tables/rebalance_table [post]
 func (h *openAPI) RebalanceTables(c *gin.Context) {
-	if !h.capture.IsOwner() {
-		h.forwardToOwner(c)
-		return
-	}
-
-	ctx := c.Request.Context()
-	changefeedID := c.Param(apiOpVarChangefeedID)
-
-	if err := model.ValidateChangefeedID(changefeedID); err != nil {
-		_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid changefeed_id: %s", changefeedID))
-		return
-	}
-	// check if the changefeed exists
-	_, err := h.statusProvider().GetChangeFeedStatus(ctx, changefeedID)
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-
-	if err := handleOwnerRebalance(ctx, h.capture, changefeedID); err != nil {
-		_ = c.Error(err)
-		return
-	}
-	c.Status(http.StatusAccepted)
+	//if !h.capture.IsOwner() {
+	//	h.forwardToOwner(c)
+	//	return
+	//}
+	//
+	//ctx := c.Request.Context()
+	//changefeedID := c.Param(apiOpVarChangefeedID)
+	//
+	//if err := model.ValidateChangefeedID(changefeedID); err != nil {
+	//	_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid changefeed_id: %s", changefeedID))
+	//	return
+	//}
+	//// check if the changefeed exists
+	//_, err := h.statusProvider().GetChangeFeedStatus(ctx, changefeedID)
+	//if err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//
+	//if err := handleOwnerRebalance(ctx, h.capture, changefeedID); err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//c.Status(http.StatusAccepted)
 }
 
 // MoveTable moves a table to target capture
@@ -518,46 +518,46 @@ func (h *openAPI) RebalanceTables(c *gin.Context) {
 // @Failure 500,400 {object} model.HTTPError
 // @Router /api/v1/changefeeds/{changefeed_id}/tables/move_table [post]
 func (h *openAPI) MoveTable(c *gin.Context) {
-	if !h.capture.IsOwner() {
-		h.forwardToOwner(c)
-		return
-	}
-
-	ctx := c.Request.Context()
-	changefeedID := c.Param(apiOpVarChangefeedID)
-	if err := model.ValidateChangefeedID(changefeedID); err != nil {
-		_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid changefeed_id: %s", changefeedID))
-		return
-	}
-	// check if the changefeed exists
-	_, err := h.statusProvider().GetChangeFeedStatus(ctx, changefeedID)
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-
-	data := struct {
-		CaptureID string `json:"capture_id"`
-		TableID   int64  `json:"table_id"`
-	}{}
-	err = c.BindJSON(&data)
-	if err != nil {
-		_ = c.Error(cerror.ErrAPIInvalidParam.Wrap(err))
-		return
-	}
-
-	if err := model.ValidateChangefeedID(data.CaptureID); err != nil {
-		_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid capture_id: %s", data.CaptureID))
-		return
-	}
-
-	err = handleOwnerScheduleTable(
-		ctx, h.capture, changefeedID, data.CaptureID, data.TableID)
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-	c.Status(http.StatusAccepted)
+	//if !h.capture.IsOwner() {
+	//	h.forwardToOwner(c)
+	//	return
+	//}
+	//
+	//ctx := c.Request.Context()
+	//changefeedID := c.Param(apiOpVarChangefeedID)
+	//if err := model.ValidateChangefeedID(changefeedID); err != nil {
+	//	_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid changefeed_id: %s", changefeedID))
+	//	return
+	//}
+	//// check if the changefeed exists
+	//_, err := h.statusProvider().GetChangeFeedStatus(ctx, changefeedID)
+	//if err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//
+	//data := struct {
+	//	CaptureID string `json:"capture_id"`
+	//	TableID   int64  `json:"table_id"`
+	//}{}
+	//err = c.BindJSON(&data)
+	//if err != nil {
+	//	_ = c.Error(cerror.ErrAPIInvalidParam.Wrap(err))
+	//	return
+	//}
+	//
+	//if err := model.ValidateChangefeedID(data.CaptureID); err != nil {
+	//	_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid capture_id: %s", data.CaptureID))
+	//	return
+	//}
+	//
+	//err = handleOwnerScheduleTable(
+	//	ctx, h.capture, changefeedID, data.CaptureID, data.TableID)
+	//if err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//c.Status(http.StatusAccepted)
 }
 
 // ResignOwner makes the current owner resign
@@ -593,73 +593,73 @@ func (h *openAPI) ResignOwner(c *gin.Context) {
 // @Failure 500,400 {object} model.HTTPError
 // @Router	/api/v1/processors/{changefeed_id}/{capture_id} [get]
 func (h *openAPI) GetProcessor(c *gin.Context) {
-	if !h.capture.IsOwner() {
-		h.forwardToOwner(c)
-		return
-	}
-
-	ctx := c.Request.Context()
-
-	changefeedID := c.Param(apiOpVarChangefeedID)
-	if err := model.ValidateChangefeedID(changefeedID); err != nil {
-		_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid changefeed_id: %s", changefeedID))
-		return
-	}
-
-	captureID := c.Param(apiOpVarCaptureID)
-	if err := model.ValidateChangefeedID(captureID); err != nil {
-		_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid capture_id: %s", captureID))
-		return
-	}
-
-	// check if this captureID exist
-	procInfos, err := h.statusProvider().GetProcessors(ctx)
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-	var found bool
-	for _, info := range procInfos {
-		if info.CaptureID == captureID {
-			found = true
-			break
-		}
-	}
-	if !found {
-		_ = c.Error(cerror.ErrCaptureNotExist.GenWithStackByArgs(captureID))
-		return
-	}
-
-	statuses, err := h.statusProvider().GetAllTaskStatuses(ctx, changefeedID)
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-	status, captureExist := statuses[captureID]
-
-	positions, err := h.statusProvider().GetTaskPositions(ctx, changefeedID)
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-	position, positionsExist := positions[captureID]
-	// Note: for the case that no tables are attached to a newly created changefeed,
-	//       we just do not report an error.
-	var processorDetail model.ProcessorDetail
-	if captureExist && positionsExist {
-		processorDetail = model.ProcessorDetail{
-			CheckPointTs: position.CheckPointTs,
-			ResolvedTs:   position.ResolvedTs,
-			Count:        position.Count,
-			Error:        position.Error,
-		}
-		tables := make([]int64, 0)
-		for tableID := range status.Tables {
-			tables = append(tables, tableID)
-		}
-		processorDetail.Tables = tables
-	}
-	c.IndentedJSON(http.StatusOK, &processorDetail)
+	//if !h.capture.IsOwner() {
+	//	h.forwardToOwner(c)
+	//	return
+	//}
+	//
+	//ctx := c.Request.Context()
+	//
+	//changefeedID := c.Param(apiOpVarChangefeedID)
+	//if err := model.ValidateChangefeedID(changefeedID); err != nil {
+	//	_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid changefeed_id: %s", changefeedID))
+	//	return
+	//}
+	//
+	//captureID := c.Param(apiOpVarCaptureID)
+	//if err := model.ValidateChangefeedID(captureID); err != nil {
+	//	_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid capture_id: %s", captureID))
+	//	return
+	//}
+	//
+	//// check if this captureID exist
+	//procInfos, err := h.statusProvider().GetProcessors(ctx)
+	//if err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//var found bool
+	//for _, info := range procInfos {
+	//	if info.CaptureID == captureID {
+	//		found = true
+	//		break
+	//	}
+	//}
+	//if !found {
+	//	_ = c.Error(cerror.ErrCaptureNotExist.GenWithStackByArgs(captureID))
+	//	return
+	//}
+	//
+	//statuses, err := h.statusProvider().GetAllTaskStatuses(ctx, changefeedID)
+	//if err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//status, captureExist := statuses[captureID]
+	//
+	//positions, err := h.statusProvider().GetTaskPositions(ctx, changefeedID)
+	//if err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//position, positionsExist := positions[captureID]
+	//// Note: for the case that no tables are attached to a newly created changefeed,
+	////       we just do not report an error.
+	//var processorDetail model.ProcessorDetail
+	//if captureExist && positionsExist {
+	//	processorDetail = model.ProcessorDetail{
+	//		CheckPointTs: position.CheckPointTs,
+	//		ResolvedTs:   position.ResolvedTs,
+	//		Count:        position.Count,
+	//		Error:        position.Error,
+	//	}
+	//	tables := make([]int64, 0)
+	//	for tableID := range status.Tables {
+	//		tables = append(tables, tableID)
+	//	}
+	//	processorDetail.Tables = tables
+	//}
+	//c.IndentedJSON(http.StatusOK, &processorDetail)
 }
 
 // ListProcessor lists all processors in the TiCDC cluster
@@ -672,23 +672,23 @@ func (h *openAPI) GetProcessor(c *gin.Context) {
 // @Failure 500,400 {object} model.HTTPError
 // @Router	/api/v1/processors [get]
 func (h *openAPI) ListProcessor(c *gin.Context) {
-	if !h.capture.IsOwner() {
-		h.forwardToOwner(c)
-		return
-	}
-
-	ctx := c.Request.Context()
-	infos, err := h.statusProvider().GetProcessors(ctx)
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-	resps := make([]*model.ProcessorCommonInfo, len(infos))
-	for i, info := range infos {
-		resp := &model.ProcessorCommonInfo{CfID: info.CfID, CaptureID: info.CaptureID}
-		resps[i] = resp
-	}
-	c.IndentedJSON(http.StatusOK, resps)
+	//if !h.capture.IsOwner() {
+	//	h.forwardToOwner(c)
+	//	return
+	//}
+	//
+	//ctx := c.Request.Context()
+	//infos, err := h.statusProvider().GetProcessors(ctx)
+	//if err != nil {
+	//	_ = c.Error(err)
+	//	return
+	//}
+	//resps := make([]*model.ProcessorCommonInfo, len(infos))
+	//for i, info := range infos {
+	//	resp := &model.ProcessorCommonInfo{CfID: info.CfID, CaptureID: info.CaptureID}
+	//	resps[i] = resp
+	//}
+	//c.IndentedJSON(http.StatusOK, resps)
 }
 
 // ListCapture lists all captures

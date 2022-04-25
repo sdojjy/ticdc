@@ -25,10 +25,10 @@ import (
 	dmysql "github.com/go-sql-driver/mysql"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
+	"github.com/pingcap/tiflow/cdc/contextutil"
 	"github.com/pingcap/tiflow/cdc/sink/metrics"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/security"
-	"github.com/pingcap/tiflow/pkg/util"
 	"go.uber.org/zap"
 )
 
@@ -219,7 +219,7 @@ func parseSinkURIToParams(ctx context.Context, sinkURI *url.URL, opts map[string
 			params.timezone = fmt.Sprintf(`"%s"`, s)
 		}
 	} else {
-		tz := util.TimezoneFromCtx(ctx)
+		tz := contextutil.TimezoneFromCtx(ctx)
 		params.timezone = fmt.Sprintf(`"%s"`, tz.String())
 	}
 

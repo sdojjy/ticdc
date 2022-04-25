@@ -11,13 +11,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package util
+package contextutil
 
 import (
 	"context"
 	"testing"
 
 	"github.com/pingcap/tidb/store/mockstore"
+	"github.com/pingcap/tiflow/pkg/util"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -58,7 +59,7 @@ func TestChangefeedIDNotSet(t *testing.T) {
 }
 
 func TestShouldReturnTimezone(t *testing.T) {
-	tz, _ := getTimezoneFromZonefile("UTC")
+	tz, _ := util.GetTimezoneFromZonefile("UTC")
 	ctx := PutTimezoneInCtx(context.Background(), tz)
 	tz = TimezoneFromCtx(ctx)
 	require.Equal(t, "UTC", tz.String())
