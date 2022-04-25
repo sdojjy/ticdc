@@ -22,6 +22,7 @@ import (
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
 	timodel "github.com/pingcap/tidb/parser/model"
+	"github.com/pingcap/tiflow/cdc/contextutil"
 	"github.com/pingcap/tiflow/cdc/entry"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/puller"
@@ -82,7 +83,7 @@ func newDDLPuller(ctx cdcContext.Context, startTs uint64) (DDLPuller, error) {
 			kvStorage,
 			ctx.GlobalVars().PDClock,
 			// Add "_ddl_puller" to make it different from table pullers.
-			ctx.ChangefeedVars().ID+"_ddl_puller",
+			ctx.ChangefeedVars().ID.String()+"_ddl_puller",
 			startTs,
 			[]regionspan.Span{regionspan.GetDDLSpan(), regionspan.GetAddIndexDDLSpan()}, false)
 	}
@@ -93,7 +94,7 @@ func newDDLPuller(ctx cdcContext.Context, startTs uint64) (DDLPuller, error) {
 		filter:       f,
 		cancel:       func() {},
 		clock:        clock.New(),
-		changefeedID: ctx.ChangefeedVars().ID + "_ddl_puller",
+		changefeedID: ctx.ChangefeedVars().ID.String() + "_ddl_puller",
 	}, nil
 }
 
@@ -102,9 +103,9 @@ func (h *ddlPullerImpl) Run(ctx cdcContext.Context) error {
 	h.cancel = cancel
 	log.Info("DDL puller started", zap.String("changefeed", h.changefeedID),
 		zap.Uint64("resolvedTS", h.resolvedTS))
-	stdCtx := util.PutTableInfoInCtx(ctx, -1, puller.DDLPullerTableName)
-	stdCtx = util.PutChangefeedIDInCtx(stdCtx, ctx.ChangefeedVars().ID)
-	stdCtx = util.PutRoleInCtx(stdCtx, util.RoleProcessor)
+	stdCtx := contextutil.PutTableInfoInCtx(ctx, -1, puller.DDLPullerTableName)
+	stdCtx = contextutil.PutChangefeedIDInCtx(stdCtx, ctx.ChangefeedVars().ID.String())
+	stdCtx = contextutil.PutRoleInCtx(stdCtx, util.RoleProcessor)
 	g, stdCtx := errgroup.WithContext(stdCtx)
 	lastResolvedTsAdvancedTime := h.clock.Now()
 

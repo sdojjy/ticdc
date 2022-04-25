@@ -126,6 +126,7 @@ var defaultServerConfig = &ServerConfig{
 		},
 		Messages: defaultMessageConfig.Clone(),
 	},
+	ClusterID: "default",
 }
 
 // ServerConfig represents a config for server
@@ -152,6 +153,7 @@ type ServerConfig struct {
 	PerTableMemoryQuota uint64          `toml:"per-table-memory-quota" json:"per-table-memory-quota"`
 	KVClient            *KVClientConfig `toml:"kv-client" json:"kv-client"`
 	Debug               *DebugConfig    `toml:"debug" json:"debug"`
+	ClusterID           string          `toml:"cluster-id" json:"cluster-id"`
 }
 
 // Marshal returns the json marshal format of a ServerConfig

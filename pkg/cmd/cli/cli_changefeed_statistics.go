@@ -15,7 +15,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/pingcap/errors"
@@ -28,7 +27,6 @@ import (
 	"github.com/pingcap/tiflow/pkg/etcd"
 	"github.com/pingcap/tiflow/pkg/version"
 	"github.com/spf13/cobra"
-	"github.com/tikv/client-go/v2/oracle"
 	pd "github.com/tikv/pd/client"
 	"go.uber.org/zap"
 )
@@ -112,81 +110,81 @@ func (o *statisticsChangefeedOptions) complete(f factory.Factory) error {
 
 // run cli command with etcd client
 func (o *statisticsChangefeedOptions) runCliWithEtcdClient(ctx context.Context, cmd *cobra.Command, lastCount *uint64, lastTime *time.Time) error {
-	now := time.Now()
-
-	changefeedStatus, _, err := o.etcdClient.GetChangeFeedStatus(ctx, o.changefeedID)
-	if err != nil {
-		return err
-	}
-
-	taskPositions, err := o.etcdClient.GetAllTaskPositions(ctx, o.changefeedID)
-	if err != nil {
-		return err
-	}
-
-	var count uint64
-	for _, pinfo := range taskPositions {
-		count += pinfo.Count
-	}
-
-	ts, _, err := o.pdClient.GetTS(ctx)
-	if err != nil {
-		return err
-	}
-
-	sinkGap := oracle.ExtractPhysical(changefeedStatus.ResolvedTs) - oracle.ExtractPhysical(changefeedStatus.CheckpointTs)
-	replicationGap := ts - oracle.ExtractPhysical(changefeedStatus.CheckpointTs)
-
-	statistics := status{
-		OPS:            (count - (*lastCount)) / uint64(now.Unix()-lastTime.Unix()),
-		SinkGap:        fmt.Sprintf("%dms", sinkGap),
-		ReplicationGap: fmt.Sprintf("%dms", replicationGap),
-		Count:          count,
-	}
-
-	*lastCount = count
-	*lastTime = now
-	return util.JSONPrint(cmd, statistics)
-}
-
-// run cli command with api client
-func (o *statisticsChangefeedOptions) runCliWithAPIClient(ctx context.Context, cmd *cobra.Command, lastCount *uint64, lastTime *time.Time) error {
-	now := time.Now()
-	var count uint64
-	captures, err := o.apiClient.Captures().List(ctx)
-	if err != nil {
-		return err
-	}
-
-	for _, capture := range *captures {
-		processor, err := o.apiClient.Processors().Get(ctx, o.changefeedID, capture.ID)
-		if err != nil {
-			return err
-		}
-		count += processor.Count
-	}
-
-	ts, _, err := o.pdClient.GetTS(ctx)
-	if err != nil {
-		return err
-	}
-	changefeed, err := o.apiClient.Changefeeds().Get(ctx, o.changefeedID)
-	if err != nil {
-		return err
-	}
-
-	sinkGap := oracle.ExtractPhysical(changefeed.ResolvedTs) - oracle.ExtractPhysical(changefeed.CheckpointTSO)
-	replicationGap := ts - oracle.ExtractPhysical(changefeed.CheckpointTSO)
-	statistics := status{
-		OPS:            (count - (*lastCount)) / uint64(now.Unix()-lastTime.Unix()),
-		SinkGap:        fmt.Sprintf("%dms", sinkGap),
-		ReplicationGap: fmt.Sprintf("%dms", replicationGap),
-		Count:          count,
-	}
-
-	*lastCount = count
-	*lastTime = now
-	return util.JSONPrint(cmd, statistics)
+	//	now := time.Now()
+	//
+	//	changefeedStatus, _, err := o.etcdClient.GetChangeFeedStatus(ctx, o.changefeedID)
+	//	if err != nil {
+	//		return err
+	//	}
+	//
+	//	taskPositions, err := o.etcdClient.GetAllTaskPositions(ctx, o.changefeedID)
+	//	if err != nil {
+	//		return err
+	//	}
+	//
+	//	var count uint64
+	//	for _, pinfo := range taskPositions {
+	//		count += pinfo.Count
+	//	}
+	//
+	//	ts, _, err := o.pdClient.GetTS(ctx)
+	//	if err != nil {
+	//		return err
+	//	}
+	//
+	//	sinkGap := oracle.ExtractPhysical(changefeedStatus.ResolvedTs) - oracle.ExtractPhysical(changefeedStatus.CheckpointTs)
+	//	replicationGap := ts - oracle.ExtractPhysical(changefeedStatus.CheckpointTs)
+	//
+	//	statistics := status{
+	//		OPS:            (count - (*lastCount)) / uint64(now.Unix()-lastTime.Unix()),
+	//		SinkGap:        fmt.Sprintf("%dms", sinkGap),
+	//		ReplicationGap: fmt.Sprintf("%dms", replicationGap),
+	//		Count:          count,
+	//	}
+	//
+	//	*lastCount = count
+	//	*lastTime = now
+	//	return util.JSONPrint(cmd, statistics)
+	//}
+	//
+	//// run cli command with api client
+	//func (o *statisticsChangefeedOptions) runCliWithAPIClient(ctx context.Context, cmd *cobra.Command, lastCount *uint64, lastTime *time.Time) error {
+	//	now := time.Now()
+	//	var count uint64
+	//	captures, err := o.apiClient.Captures().List(ctx)
+	//	if err != nil {
+	//		return err
+	//	}
+	//
+	//	for _, capture := range *captures {
+	//		processor, err := o.apiClient.Processors().Get(ctx, o.changefeedID, capture.ID)
+	//		if err != nil {
+	//			return err
+	//		}
+	//		count += processor.Count
+	//	}
+	//
+	//	ts, _, err := o.pdClient.GetTS(ctx)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	changefeed, err := o.apiClient.Changefeeds().Get(ctx, o.changefeedID)
+	//	if err != nil {
+	//		return err
+	//	}
+	//
+	//	sinkGap := oracle.ExtractPhysical(changefeed.ResolvedTs) - oracle.ExtractPhysical(changefeed.CheckpointTSO)
+	//	replicationGap := ts - oracle.ExtractPhysical(changefeed.CheckpointTSO)
+	//	statistics := status{
+	//		OPS:            (count - (*lastCount)) / uint64(now.Unix()-lastTime.Unix()),
+	//		SinkGap:        fmt.Sprintf("%dms", sinkGap),
+	//		ReplicationGap: fmt.Sprintf("%dms", replicationGap),
+	//		Count:          count,
+	//	}
+	//
+	//	*lastCount = count
+	//	*lastTime = now
+	return util.JSONPrint(cmd, "statistics")
 }
 
 // run the `cli changefeed statistics` command.
@@ -194,8 +192,8 @@ func (o *statisticsChangefeedOptions) run(cmd *cobra.Command) error {
 	ctx := cmdcontext.GetDefaultContext()
 
 	tick := time.NewTicker(time.Duration(o.interval) * time.Second)
-	var lastTime time.Time
-	var lastCount uint64
+	//var lastTime time.Time
+	//var lastCount uint64
 
 	for {
 		select {
@@ -204,11 +202,11 @@ func (o *statisticsChangefeedOptions) run(cmd *cobra.Command) error {
 				return err
 			}
 		case <-tick.C:
-			if o.runWithAPIClient {
-				_ = o.runCliWithAPIClient(ctx, cmd, &lastCount, &lastTime)
-			} else {
-				_ = o.runCliWithEtcdClient(ctx, cmd, &lastCount, &lastTime)
-			}
+			//if o.runWithAPIClient {
+			//	_ = o.runCliWithAPIClient(ctx, cmd, &lastCount, &lastTime)
+			//} else {
+			//	_ = o.runCliWithEtcdClient(ctx, cmd, &lastCount, &lastTime)
+			//}
 		}
 	}
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
+	"github.com/pingcap/tiflow/cdc/contextutil"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/sink/codec"
 	"github.com/pingcap/tiflow/cdc/sink/metrics"
@@ -67,7 +68,7 @@ type mqSink struct {
 	statistics *metrics.Statistics
 
 	role util.Role
-	id   model.ChangeFeedID
+	id   string
 }
 
 func newMqSink(
@@ -90,8 +91,8 @@ func newMqSink(
 		return nil, errors.Trace(err)
 	}
 
-	changefeedID := util.ChangefeedIDFromCtx(ctx)
-	role := util.RoleFromCtx(ctx)
+	changefeedID := contextutil.ChangefeedIDFromCtx(ctx)
+	role := contextutil.RoleFromCtx(ctx)
 
 	encoder := encoderBuilder.Build()
 	statistics := metrics.NewStatistics(ctx, metrics.SinkTypeMQ)
@@ -390,7 +391,7 @@ func NewKafkaSaramaSink(ctx context.Context, sinkURI *url.URL,
 		return nil, cerror.WrapError(cerror.ErrKafkaInvalidConfig, err)
 	}
 
-	encoderConfig := codec.NewConfig(protocol, util.TimezoneFromCtx(ctx))
+	encoderConfig := codec.NewConfig(protocol, contextutil.TimezoneFromCtx(ctx))
 	if err := encoderConfig.Apply(sinkURI, opts); err != nil {
 		return nil, cerror.WrapError(cerror.ErrKafkaInvalidConfig, err)
 	}
@@ -463,7 +464,7 @@ func NewPulsarSink(ctx context.Context, sinkURI *url.URL, filter *filter.Filter,
 		return nil, cerror.WrapError(cerror.ErrKafkaInvalidConfig, err)
 	}
 
-	encoderConfig := codec.NewConfig(protocol, util.TimezoneFromCtx(ctx))
+	encoderConfig := codec.NewConfig(protocol, contextutil.TimezoneFromCtx(ctx))
 	if err := encoderConfig.Apply(sinkURI, opts); err != nil {
 		return nil, errors.Trace(err)
 	}

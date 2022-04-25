@@ -129,7 +129,7 @@ func NewTableActor(cdcCtx cdcContext.Context,
 		targetTs:      targetTs,
 		started:       false,
 
-		changefeedID:   changefeedVars.ID,
+		changefeedID:   changefeedVars.ID.ID,
 		changefeedVars: changefeedVars,
 		globalVars:     globalVars,
 		router:         globalVars.TableActorSystem.Router(),
@@ -280,7 +280,7 @@ func (t *tableActor) start(sdtTableContext context.Context) error {
 		return err
 	}
 
-	pullerNode := newPullerNode(t.tableID, t.replicaInfo, t.tableName, t.changefeedVars.ID)
+	pullerNode := newPullerNode(t.tableID, t.replicaInfo, t.tableName, t.changefeedVars.ID.ID)
 	pullerActorNodeContext := newContext(sdtTableContext,
 		t.tableName,
 		t.globalVars.TableActorSystem.Router(),

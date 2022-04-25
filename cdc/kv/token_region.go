@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/pingcap/errors"
-	"github.com/pingcap/tiflow/pkg/util"
+	"github.com/pingcap/tiflow/cdc/contextutil"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -55,7 +55,7 @@ type srrMetrics struct {
 }
 
 func newSrrMetrics(ctx context.Context) *srrMetrics {
-	changefeed := util.ChangefeedIDFromCtx(ctx)
+	changefeed := contextutil.ChangefeedIDFromCtx(ctx)
 	return &srrMetrics{
 		changefeed:    changefeed,
 		tokens:        make(map[string]prometheus.Gauge),

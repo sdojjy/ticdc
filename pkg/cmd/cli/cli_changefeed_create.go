@@ -23,6 +23,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
+	ctx2 "github.com/pingcap/tiflow/cdc/contextutil"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/sink"
 	cmdcontext "github.com/pingcap/tiflow/pkg/cmd/context"
@@ -57,6 +58,7 @@ type changefeedCommonOptions struct {
 	cyclicSyncDDL          bool
 	syncPointEnabled       bool
 	syncPointInterval      time.Duration
+	namespace              string
 }
 
 // newChangefeedCommonOptions creates new changefeed common options.
@@ -83,6 +85,7 @@ func (o *changefeedCommonOptions) addFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().BoolVar(&o.cyclicSyncDDL, "cyclic-sync-ddl", true, "(Experimental) Cyclic replication sync DDL of changefeed")
 	cmd.PersistentFlags().BoolVar(&o.syncPointEnabled, "sync-point", false, "(Experimental) Set and Record syncpoint in replication(default off)")
 	cmd.PersistentFlags().DurationVar(&o.syncPointInterval, "sync-interval", 10*time.Minute, "(Experimental) Set the interval for syncpoint in replication(default 10min)")
+	cmd.PersistentFlags().StringVar(&o.namespace, "namespace", "default", "(Experimental) Set the interval for syncpoint in replication(default 10min)")
 	_ = cmd.PersistentFlags().MarkHidden("sort-dir")
 }
 
@@ -363,7 +366,7 @@ func (o *createChangefeedOptions) validateStartTs(ctx context.Context) error {
 	// Ensure the start ts is validate in the next 1 hour.
 	const ensureTTL = 60 * 60.
 	return gc.EnsureChangefeedStartTsSafety(
-		ctx, o.pdClient, o.changefeedID, ensureTTL, o.startTs)
+		ctx, o.pdClient, model.ChangeFeedID{o.commonChangefeedOptions.namespace, o.changefeedID}, ensureTTL, o.startTs)
 }
 
 // validateTargetTs checks if targetTs is a valid value.
@@ -432,7 +435,7 @@ func (o *createChangefeedOptions) run(ctx context.Context, cmd *cobra.Command) e
 		return errors.Annotate(err, "can not load timezone, Please specify the time zone through environment variable `TZ` or command line parameters `--tz`")
 	}
 
-	ctx = ticdcutil.PutTimezoneInCtx(ctx, tz)
+	ctx = ctx2.PutTimezoneInCtx(ctx, tz)
 	err = o.validateSink(ctx, info.Config, info.Opts)
 	if err != nil {
 		return err
@@ -443,7 +446,10 @@ func (o *createChangefeedOptions) run(ctx context.Context, cmd *cobra.Command) e
 		return err
 	}
 
-	err = o.etcdClient.CreateChangefeedInfo(ctx, info, id)
+	err = o.etcdClient.CreateChangefeedInfo(ctx, info, model.ChangeFeedID{
+		Namespace: o.commonChangefeedOptions.namespace,
+		ID:        o.changefeedID,
+	})
 	if err != nil {
 		return err
 	}

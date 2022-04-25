@@ -88,7 +88,7 @@ func NewMySQLSink(
 	replicaConfig *config.ReplicaConfig,
 	opts map[string]string,
 ) (*mysqlSink, error) {
-	opts[metrics.OptChangefeedID] = changefeedID
+	opts[metrics.OptChangefeedID] = changefeedID.ID
 	params, err := parseSinkURIToParams(ctx, sinkURI, opts)
 	if err != nil {
 		return nil, err

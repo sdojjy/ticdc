@@ -34,7 +34,7 @@ type AdminJobOption struct {
 
 // AdminJob holds an admin job
 type AdminJob struct {
-	CfID  string
+	CfID  ChangeFeedID
 	Type  AdminJobType
 	Opts  *AdminJobOption
 	Error *RunningError
@@ -365,7 +365,21 @@ func (ts *TaskStatus) Clone() *TaskStatus {
 type CaptureID = string
 
 // ChangeFeedID is the type for change feed ID
-type ChangeFeedID = string
+type ChangeFeedID struct {
+	Namespace string `json:"namespace"`
+	ID        string `json:"id"`
+}
+
+func NewDefaultChangefeedID(id string) ChangeFeedID {
+	return ChangeFeedID{
+		Namespace: "default",
+		ID:        id,
+	}
+}
+
+func (c ChangeFeedID) String() string {
+	return fmt.Sprintf("%s-%s", c.Namespace, c.ID)
+}
 
 // TableID is the ID of the table
 type TableID = int64
@@ -444,7 +458,7 @@ func (status *ChangeFeedStatus) Unmarshal(data []byte) error {
 
 // ProcInfoSnap holds most important replication information of a processor
 type ProcInfoSnap struct {
-	CfID      string                        `json:"changefeed-id"`
+	CfID      ChangeFeedID                  `json:"changefeed-id"`
 	CaptureID string                        `json:"capture-id"`
 	Tables    map[TableID]*TableReplicaInfo `json:"-"`
 }

@@ -14,16 +14,12 @@
 package cli
 
 import (
-	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/model"
-	"github.com/pingcap/tiflow/pkg/cmd/context"
 	"github.com/pingcap/tiflow/pkg/cmd/factory"
 	"github.com/pingcap/tiflow/pkg/cmd/util"
-	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/etcd"
 	"github.com/pingcap/tiflow/pkg/security"
 	"github.com/spf13/cobra"
-	"go.uber.org/zap"
 )
 
 // captureTaskStatus holds capture task status.
@@ -79,60 +75,60 @@ func (o *queryChangefeedOptions) complete(f factory.Factory) error {
 
 // run the `cli changefeed query` command.
 func (o *queryChangefeedOptions) run(cmd *cobra.Command) error {
-	ctx := context.GetDefaultContext()
+	//ctx := context.GetDefaultContext()
 
-	if o.simplified {
-		resp, err := sendOwnerChangefeedQuery(ctx, o.etcdClient, o.changefeedID, o.credential)
-		if err != nil {
-			return err
-		}
+	//if o.simplified {
+	//	resp, err := sendOwnerChangefeedQuery(ctx, o.etcdClient, o.changefeedID, o.credential)
+	//	if err != nil {
+	//		return err
+	//	}
+	//
+	//	cmd.Println(resp)
+	//
+	//	return nil
+	//}
+	//
+	//info, err := o.etcdClient.GetChangeFeedInfo(ctx, o.changefeedID)
+	//if err != nil && cerror.ErrChangeFeedNotExists.NotEqual(err) {
+	//	return err
+	//}
+	//if info == nil {
+	//	log.Warn("This changefeed has been deleted, the residual meta data will be completely deleted within 24 hours.", zap.String("changgefeed", o.changefeedID))
+	//}
+	//
+	//status, _, err := o.etcdClient.GetChangeFeedStatus(ctx, o.changefeedID)
+	//if err != nil && cerror.ErrChangeFeedNotExists.NotEqual(err) {
+	//	return err
+	//}
+	//
+	//if err != nil && cerror.ErrChangeFeedNotExists.Equal(err) {
+	//	log.Error("This changefeed does not exist", zap.String("changefeed", o.changefeedID))
+	//	return err
+	//}
+	//
+	//taskPositions, err := o.etcdClient.GetAllTaskPositions(ctx, o.changefeedID)
+	//if err != nil && cerror.ErrChangeFeedNotExists.NotEqual(err) {
+	//	return err
+	//}
+	//
+	//var count uint64
+	//for _, pinfo := range taskPositions {
+	//	count += pinfo.Count
+	//}
+	//
+	//processorInfos, err := o.etcdClient.GetAllTaskStatus(ctx, o.changefeedID)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//taskStatus := make([]captureTaskStatus, 0, len(processorInfos))
+	//for captureID, status := range processorInfos {
+	//	taskStatus = append(taskStatus, captureTaskStatus{CaptureID: captureID, TaskStatus: status})
+	//}
+	//
+	//meta := &cfMeta{Info: info, Status: status, Count: count, TaskStatus: taskStatus}
 
-		cmd.Println(resp)
-
-		return nil
-	}
-
-	info, err := o.etcdClient.GetChangeFeedInfo(ctx, o.changefeedID)
-	if err != nil && cerror.ErrChangeFeedNotExists.NotEqual(err) {
-		return err
-	}
-	if info == nil {
-		log.Warn("This changefeed has been deleted, the residual meta data will be completely deleted within 24 hours.", zap.String("changgefeed", o.changefeedID))
-	}
-
-	status, _, err := o.etcdClient.GetChangeFeedStatus(ctx, o.changefeedID)
-	if err != nil && cerror.ErrChangeFeedNotExists.NotEqual(err) {
-		return err
-	}
-
-	if err != nil && cerror.ErrChangeFeedNotExists.Equal(err) {
-		log.Error("This changefeed does not exist", zap.String("changefeed", o.changefeedID))
-		return err
-	}
-
-	taskPositions, err := o.etcdClient.GetAllTaskPositions(ctx, o.changefeedID)
-	if err != nil && cerror.ErrChangeFeedNotExists.NotEqual(err) {
-		return err
-	}
-
-	var count uint64
-	for _, pinfo := range taskPositions {
-		count += pinfo.Count
-	}
-
-	processorInfos, err := o.etcdClient.GetAllTaskStatus(ctx, o.changefeedID)
-	if err != nil {
-		return err
-	}
-
-	taskStatus := make([]captureTaskStatus, 0, len(processorInfos))
-	for captureID, status := range processorInfos {
-		taskStatus = append(taskStatus, captureTaskStatus{CaptureID: captureID, TaskStatus: status})
-	}
-
-	meta := &cfMeta{Info: info, Status: status, Count: count, TaskStatus: taskStatus}
-
-	return util.JSONPrint(cmd, meta)
+	return util.JSONPrint(cmd, "")
 }
 
 // newCmdQueryChangefeed creates the `cli changefeed query` command.

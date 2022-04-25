@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package util
+package contextutil
 
 import (
 	"context"
@@ -19,6 +19,8 @@ import (
 
 	"github.com/pingcap/errors"
 	"github.com/pingcap/tidb/kv"
+	"github.com/pingcap/tiflow/cdc/model"
+	"github.com/pingcap/tiflow/pkg/util"
 	"go.uber.org/zap"
 )
 
@@ -124,16 +126,16 @@ func PutChangefeedIDInCtx(ctx context.Context, changefeedID string) context.Cont
 
 // RoleFromCtx returns a role stored in the specified context.
 // It returns RoleUnknown if there's no valid role found
-func RoleFromCtx(ctx context.Context) Role {
-	role, ok := ctx.Value(ctxKeyRole).(Role)
+func RoleFromCtx(ctx context.Context) util.Role {
+	role, ok := ctx.Value(ctxKeyRole).(util.Role)
 	if !ok {
-		return RoleUnknown
+		return util.RoleUnknown
 	}
 	return role
 }
 
 // PutRoleInCtx return a new child context with the specified role stored.
-func PutRoleInCtx(ctx context.Context, role Role) context.Context {
+func PutRoleInCtx(ctx context.Context, role util.Role) context.Context {
 	return context.WithValue(ctx, ctxKeyRole, role)
 }
 
@@ -145,5 +147,10 @@ func ZapFieldCapture(ctx context.Context) zap.Field {
 
 // ZapFieldChangefeed returns a zap field containing changefeed id
 func ZapFieldChangefeed(ctx context.Context) zap.Field {
+	return zap.String("changefeed", ChangefeedIDFromCtx(ctx))
+}
+
+// ZapFieldChangefeeda returns a zap field containing changefeed id
+func ZapFieldChangefeeda(ctx context.Context, c model.ChangeFeedID) zap.Field {
 	return zap.String("changefeed", ChangefeedIDFromCtx(ctx))
 }

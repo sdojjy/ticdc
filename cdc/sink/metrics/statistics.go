@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/pingcap/log"
-	"github.com/pingcap/tiflow/pkg/util"
+	"github.com/pingcap/tiflow/cdc/contextutil"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
@@ -57,7 +57,7 @@ func (t sinkType) String() string {
 func NewStatistics(ctx context.Context, t sinkType) *Statistics {
 	statistics := &Statistics{
 		sinkType:            t,
-		changefeedID:        util.ChangefeedIDFromCtx(ctx),
+		changefeedID:        contextutil.ChangefeedIDFromCtx(ctx),
 		lastPrintStatusTime: time.Now(),
 	}
 
@@ -176,7 +176,7 @@ func (b *Statistics) PrintStatus(ctx context.Context) {
 	log.Info("sink replication status",
 		zap.Stringer("sinkType", b.sinkType),
 		zap.String("changefeed", b.changefeedID),
-		util.ZapFieldCapture(ctx),
+		contextutil.ZapFieldCapture(ctx),
 		zap.Uint64("count", count),
 		zap.Uint64("qps", qps),
 		zap.Uint64("ddl", totalDDLCount))

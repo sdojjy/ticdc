@@ -26,7 +26,7 @@ import (
 	"github.com/pingcap/errors"
 	"github.com/pingcap/failpoint"
 	"github.com/pingcap/log"
-	"github.com/pingcap/tiflow/cdc/model"
+	"github.com/pingcap/tiflow/cdc/contextutil"
 	"github.com/pingcap/tiflow/cdc/sink/codec"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/kafka"
@@ -72,7 +72,7 @@ type kafkaSaramaProducer struct {
 	closing kafkaProducerClosingFlag
 
 	role util.Role
-	id   model.ChangeFeedID
+	id   string
 }
 
 type kafkaProducerClosingFlag = int32
@@ -316,8 +316,8 @@ func NewKafkaSaramaProducer(
 	saramaConfig *sarama.Config,
 	errCh chan error,
 ) (*kafkaSaramaProducer, error) {
-	changefeedID := util.ChangefeedIDFromCtx(ctx)
-	role := util.RoleFromCtx(ctx)
+	changefeedID := contextutil.ChangefeedIDFromCtx(ctx)
+	role := contextutil.RoleFromCtx(ctx)
 	log.Info("Starting kafka sarama producer ...", zap.Any("config", config),
 		zap.String("changefeed", changefeedID), zap.Any("role", role))
 

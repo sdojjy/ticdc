@@ -21,13 +21,13 @@ import (
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
 	tidbkv "github.com/pingcap/tidb/kv"
+	"github.com/pingcap/tiflow/cdc/contextutil"
 	"github.com/pingcap/tiflow/cdc/kv"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/puller/frontier"
 	"github.com/pingcap/tiflow/pkg/pdtime"
 	"github.com/pingcap/tiflow/pkg/regionspan"
 	"github.com/pingcap/tiflow/pkg/txnutil"
-	"github.com/pingcap/tiflow/pkg/util"
 	"github.com/tikv/client-go/v2/oracle"
 	"github.com/tikv/client-go/v2/tikv"
 	pd "github.com/tikv/pd/client"
@@ -113,7 +113,7 @@ func (p *pullerImpl) Run(ctx context.Context) error {
 	eventCh := make(chan model.RegionFeedEvent, defaultPullerEventChanSize)
 
 	lockResolver := txnutil.NewLockerResolver(p.kvStorage,
-		util.ChangefeedIDFromCtx(ctx), util.RoleFromCtx(ctx))
+		contextutil.ChangefeedIDFromCtx(ctx), contextutil.RoleFromCtx(ctx))
 	for _, span := range p.spans {
 		span := span
 
@@ -123,8 +123,8 @@ func (p *pullerImpl) Run(ctx context.Context) error {
 		})
 	}
 
-	changefeedID := util.ChangefeedIDFromCtx(ctx)
-	tableID, _ := util.TableIDFromCtx(ctx)
+	changefeedID := contextutil.ChangefeedIDFromCtx(ctx)
+	tableID, _ := contextutil.TableIDFromCtx(ctx)
 	metricOutputChanSize := outputChanSizeHistogram.WithLabelValues(changefeedID)
 	metricEventChanSize := eventChanSizeHistogram.WithLabelValues(changefeedID)
 	metricPullerResolvedTs := pullerResolvedTsGauge.WithLabelValues(changefeedID)

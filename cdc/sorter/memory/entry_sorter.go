@@ -22,10 +22,10 @@ import (
 
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
+	"github.com/pingcap/tiflow/cdc/contextutil"
 	"github.com/pingcap/tiflow/cdc/model"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/notify"
-	"github.com/pingcap/tiflow/pkg/util"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
@@ -51,8 +51,8 @@ func NewEntrySorter() *EntrySorter {
 
 // Run runs EntrySorter
 func (es *EntrySorter) Run(ctx context.Context) error {
-	changefeedID := util.ChangefeedIDFromCtx(ctx)
-	_, tableName := util.TableIDFromCtx(ctx)
+	changefeedID := contextutil.ChangefeedIDFromCtx(ctx)
+	_, tableName := contextutil.TableIDFromCtx(ctx)
 	metricEntrySorterResolvedChanSizeGuage := entrySorterResolvedChanSizeGauge.WithLabelValues(changefeedID, tableName)
 	metricEntrySorterOutputChanSizeGauge := entrySorterOutputChanSizeGauge.WithLabelValues(changefeedID, tableName)
 	metricEntryUnsortedSizeGauge := entrySorterUnsortedSizeGauge.WithLabelValues(changefeedID, tableName)
