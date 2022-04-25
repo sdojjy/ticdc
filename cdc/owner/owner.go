@@ -15,6 +15,7 @@ package owner
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"math"
 	"sync"
@@ -629,7 +630,7 @@ func (o *ownerImpl) updateGCSafepoint(
 		// (checkpointTs - 1) from TiKV, so (checkpointTs - 1) should be an upper
 		// bound for the GC safepoint.
 		gcSafepointUpperBound := minCheckpointTs - 1
-		err = upStream.GCManager.TryUpdateGCSafePoint(ctx, gcSafepointUpperBound, forceUpdateMap[id])
+		err = upStream.GCManager.TryUpdateGCSafePoint(ctx, fmt.Sprintf("%s-%s", config.GetGlobalServerConfig().ClusterID, id), gcSafepointUpperBound, forceUpdateMap[id])
 	}
 	return nil
 }

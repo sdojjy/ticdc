@@ -42,7 +42,7 @@ type Manager interface {
 	// TryUpdateGCSafePoint tries to update TiCDC service GC safepoint.
 	// Manager may skip update when it thinks it is too frequent.
 	// Set `forceUpdate` to force Manager update.
-	TryUpdateGCSafePoint(ctx context.Context, checkpointTs model.Ts, forceUpdate bool) error
+	TryUpdateGCSafePoint(ctx context.Context, serviceID string, checkpointTs model.Ts, forceUpdate bool) error
 	CheckStaleCheckpointTs(ctx context.Context, changefeedID model.ChangeFeedID, checkpointTs model.Ts) error
 }
 
@@ -72,7 +72,7 @@ func NewManager(pdClient pd.Client, pdClock pdtime.Clock) Manager {
 }
 
 func (m *gcManager) TryUpdateGCSafePoint(
-	ctx context.Context, checkpointTs model.Ts, forceUpdate bool,
+	ctx context.Context, serviceID string, checkpointTs model.Ts, forceUpdate bool,
 ) error {
 	if time.Since(m.lastUpdatedTime) < gcSafepointUpdateInterval && !forceUpdate {
 		return nil
@@ -80,7 +80,7 @@ func (m *gcManager) TryUpdateGCSafePoint(
 	m.lastUpdatedTime = time.Now()
 
 	actual, err := setServiceGCSafepoint(
-		ctx, m.pdClient, CDCServiceSafePointID, m.gcTTL, checkpointTs)
+		ctx, m.pdClient, serviceID, m.gcTTL, checkpointTs)
 	if err != nil {
 		log.Warn("updateGCSafePoint failed",
 			zap.Uint64("safePointTs", checkpointTs),

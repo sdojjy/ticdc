@@ -389,7 +389,6 @@ func (o *createChangefeedOptions) validateSink(
 
 // run the `cli changefeed create` command.
 func (o *createChangefeedOptions) run(ctx context.Context, cmd *cobra.Command) error {
-	config.GetGlobalServerConfig().ClusterID = o.commonChangefeedOptions.clusterID
 	id := o.changefeedID
 	if id == "" {
 		id = uuid.New().String()
@@ -489,6 +488,7 @@ func newCmdCreateChangefeed(f factory.Factory) *cobra.Command {
 				return err
 			}
 
+			config.GetGlobalServerConfig().ClusterID = o.commonChangefeedOptions.clusterID
 			err = o.validate(ctx, cmd)
 			if err != nil {
 				return err
