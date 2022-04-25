@@ -17,16 +17,13 @@ import (
 	"context"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/benbjohnson/clock"
+	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
+	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/pkg/config"
 	"go.uber.org/zap"
-)
-
-const (
-	tickDuration = 10 * time.Second
 )
 
 var UpStreamManager *Manager
@@ -35,6 +32,7 @@ type Manager struct {
 	ups sync.Map
 	c   clock.Clock
 	ctx context.Context
+	lck sync.Mutex
 }
 
 // NewManager create a new Manager.
@@ -42,39 +40,43 @@ func NewManager(ctx context.Context) *Manager {
 	return &Manager{c: clock.New(), ctx: ctx}
 }
 
-// Run will check all upStream in Manager periodly, if one upStream has not been
-// use more than 30 mintues, close it.
-func (m *Manager) Run(ctx context.Context) error {
-	ticker := m.c.Ticker(tickDuration)
-	for {
-		select {
-		case <-ctx.Done():
-			m.closeUpstreams()
-			log.Info("upstream manager exit")
-			return ctx.Err()
-		case <-ticker.C:
-			m.checkUpstreams()
-		}
-	}
-}
-
-// Get gets a upStream by clusterID, if this upStream does not exis, create it.
-func (m *Manager) Get(clusterID uint64) (*UpStream, error) {
+func (m *Manager) TryInit(clusterID string, upstreamInfo *model.UpstreamInfo) error {
 	if up, ok := m.ups.Load(clusterID); ok {
 		up.(*UpStream).hold()
 		up.(*UpStream).clearIdealCount()
-		return up.(*UpStream), nil
+		return nil
+	}
+	m.lck.Lock()
+	defer m.lck.Unlock()
+	if up, ok := m.ups.Load(clusterID); ok {
+		up.(*UpStream).hold()
+		up.(*UpStream).clearIdealCount()
+		return nil
 	}
 
 	// TODO: use changefeed's pd addr in the future
-	pdEndpoints := strings.Split(config.GetGlobalServerConfig().Debug.ServerPdAddr, ",")
-	securityConfig := config.GetGlobalServerConfig().Security
+	pdEndpoints := strings.Split(upstreamInfo.PD, ",")
+	securityConfig := &config.SecurityConfig{
+		CAPath:   upstreamInfo.CAPath,
+		CertPath: upstreamInfo.CertPath,
+		KeyPath:  upstreamInfo.KeyPath,
+	}
 	up := newUpStream(pdEndpoints, securityConfig)
 	up.hold()
 	// 之后的实现需要检查错误
 	_ = up.Init(m.ctx)
 	m.ups.Store(clusterID, up)
-	return up, nil
+	return nil
+}
+
+// Get gets a upStream by clusterID, if this upStream does not exis, create it.
+func (m *Manager) Get(clusterID string) (*UpStream, error) {
+	if up, ok := m.ups.Load(clusterID); ok {
+		up.(*UpStream).hold()
+		up.(*UpStream).clearIdealCount()
+		return up.(*UpStream), nil
+	}
+	return nil, errors.New("upstream is not found")
 }
 
 // Release releases a upStream by clusterID

@@ -305,20 +305,46 @@ func (c CDCEtcdClient) RevokeAllLeases(ctx context.Context, leases map[string]in
 }
 
 // CreateChangefeedInfo creates a change feed info into etcd and fails if it is already exists.
-func (c CDCEtcdClient) CreateChangefeedInfo(ctx context.Context, info *model.ChangeFeedInfo, changeFeedID model.ChangeFeedID) error {
+func (c CDCEtcdClient) CreateChangefeedInfo(ctx context.Context, cdcClusterID string, upstreamInfo *model.UpstreamInfo, info *model.ChangeFeedInfo, changeFeedID model.ChangeFeedID) error {
 	infoKey := GetEtcdKeyChangeFeedInfo(changeFeedID)
 	jobKey := GetEtcdKeyJob(changeFeedID)
 	value, err := info.Marshal()
 	if err != nil {
 		return errors.Trace(err)
 	}
-
-	cmps := []clientv3.Cmp{
-		clientv3.Compare(clientv3.ModRevision(infoKey), "=", 0),
-		clientv3.Compare(clientv3.ModRevision(jobKey), "=", 0),
+	upstram, err := upstreamInfo.Marshal()
+	if err != nil {
+		return errors.Trace(err)
 	}
-	opsThen := []clientv3.Op{
-		clientv3.OpPut(infoKey, value),
+
+	upstreamKey := CDCClusterBase(cdcClusterID) + CDCMetaPrefix + upstreamInfoKey + "/" + info.UpstreamID
+
+	getresp, err := c.Client.Get(ctx, upstreamKey, clientv3.WithFirstCreate()...)
+	if err != nil {
+		return err
+	}
+	hasUpstream := len(getresp.Kvs) > 0
+	var cmps []clientv3.Cmp
+	var opsThen []clientv3.Op
+	if hasUpstream { //already has an upstream config in etcd
+		cmps = []clientv3.Cmp{
+			clientv3.Compare(clientv3.ModRevision(infoKey), "=", 0),
+			clientv3.Compare(clientv3.ModRevision(jobKey), "=", 0),
+			clientv3.Compare(clientv3.Value(upstreamKey), "!=", ""),
+		}
+		opsThen = []clientv3.Op{
+			clientv3.OpPut(infoKey, value),
+		}
+	} else {
+		cmps = []clientv3.Cmp{
+			clientv3.Compare(clientv3.ModRevision(infoKey), "=", 0),
+			clientv3.Compare(clientv3.ModRevision(jobKey), "=", 0),
+			clientv3.Compare(clientv3.ModRevision(upstreamKey), "=", 0),
+		}
+		opsThen = []clientv3.Op{
+			clientv3.OpPut(upstreamKey, string(upstram)),
+			clientv3.OpPut(infoKey, value),
+		}
 	}
 	resp, err := c.Client.Txn(ctx, cmps, opsThen, TxnEmptyOpsElse)
 	if err != nil {

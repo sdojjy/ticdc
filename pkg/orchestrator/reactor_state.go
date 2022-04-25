@@ -46,6 +46,7 @@ func NewGlobalState() *GlobalReactorState {
 		Owner:       map[string]struct{}{},
 		Captures:    make(map[model.CaptureID]*model.CaptureInfo),
 		Changefeeds: make(map[model.ChangeFeedID]*ChangefeedReactorState),
+		Upstreams:   map[string]*model.UpstreamInfo{},
 	}
 }
 

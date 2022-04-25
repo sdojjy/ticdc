@@ -116,6 +116,8 @@ type ChangeFeedInfo struct {
 	SyncPointEnabled  bool          `json:"sync-point-enabled"`
 	SyncPointInterval time.Duration `json:"sync-point-interval"`
 	CreatorVersion    string        `json:"creator-version"`
+
+	UpstreamID string `json:"upstream-id"`
 }
 
 const changeFeedIDMaxLen = 128

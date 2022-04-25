@@ -165,6 +165,13 @@ func (o *ownerImpl) Tick(stdCtx context.Context, rawState orchestrator.ReactorSt
 	if !o.clusterVersionConsistent(state.Captures) {
 		return state, nil
 	}
+
+	for key, info := range state.Upstreams {
+		if err := upstream.UpStreamManager.TryInit(key, info); err != nil {
+			return nil, errors.Trace(err)
+		}
+	}
+
 	// Owner should update GC safepoint before initializing changefeed, so
 	// changefeed can remove its "ticdc-creating" service GC safepoint during
 	// initializing.
@@ -191,7 +198,7 @@ func (o *ownerImpl) Tick(stdCtx context.Context, rawState orchestrator.ReactorSt
 		cfReactor, exist := o.changefeeds[changefeedID]
 		if !exist {
 			// 需要获取 clusterID 来划分 changefeed 所属集群
-			upStream, err := upstream.UpStreamManager.Get(0)
+			upStream, err := upstream.UpStreamManager.Get(changefeedState.Info.UpstreamID)
 			if err != nil {
 				return state, errors.Trace(err)
 			}
@@ -577,8 +584,8 @@ func (o *ownerImpl) pushOwnerJob(job *ownerJob) {
 func (o *ownerImpl) updateGCSafepoint(
 	ctx context.Context, state *orchestrator.GlobalReactorState,
 ) error {
-	forceUpdate := false
-	minCheckpointTs := uint64(math.MaxUint64)
+	minCheckpointTsMap := make(map[string]uint64)
+	forceUpdateMap := make(map[string]bool)
 	for changefeedID, changefeedState := range state.Changefeeds {
 		if changefeedState.Info == nil {
 			continue
@@ -589,35 +596,42 @@ func (o *ownerImpl) updateGCSafepoint(
 			continue
 		}
 		checkpointTs := changefeedState.Info.GetCheckpointTs(changefeedState.Status)
+		minCheckpointTs, ok := minCheckpointTsMap[changefeedState.Info.UpstreamID]
+		if !ok {
+			minCheckpointTs = uint64(math.MaxUint64)
+		}
 		if minCheckpointTs > checkpointTs {
 			minCheckpointTs = checkpointTs
 		}
+		minCheckpointTsMap[changefeedState.Info.UpstreamID] = minCheckpointTs
 		// Force update when adding a new changefeed.
 		_, exist := o.changefeeds[changefeedID]
 		if !exist {
-			forceUpdate = true
+			forceUpdateMap[changefeedState.Info.UpstreamID] = true
 		}
 	}
-	// 此处逻辑需要修改, 需要根据上游的不同来更新 safePoint
-	upStream, err := upstream.UpStreamManager.Get(0)
-	if err != nil {
-		return errors.Trace(err)
+	for id, minCheckpointTs := range minCheckpointTsMap {
+		// 此处逻辑需要修改, 需要根据上游的不同来更新 safePoint
+		upStream, err := upstream.UpStreamManager.Get(id)
+		if err != nil {
+			return errors.Trace(err)
+		}
+		if upStream == nil {
+			log.Panic("upStream is nil")
+		}
+		if !upStream.IsInitialized() {
+			log.Panic("upStream not initialized")
+		}
+		if upStream.GCManager == nil {
+			log.Panic("gcManager is nil")
+		}
+		// When the changefeed starts up, CDC will do a snapshot read at
+		// (checkpointTs - 1) from TiKV, so (checkpointTs - 1) should be an upper
+		// bound for the GC safepoint.
+		gcSafepointUpperBound := minCheckpointTs - 1
+		err = upStream.GCManager.TryUpdateGCSafePoint(ctx, gcSafepointUpperBound, forceUpdateMap[id])
 	}
-	if upStream == nil {
-		log.Panic("upStream is nil")
-	}
-	if !upStream.IsInitialized() {
-		log.Panic("upStream not initialized")
-	}
-	if upStream.GCManager == nil {
-		log.Panic("gcManager is nil")
-	}
-	// When the changefeed starts up, CDC will do a snapshot read at
-	// (checkpointTs - 1) from TiKV, so (checkpointTs - 1) should be an upper
-	// bound for the GC safepoint.
-	gcSafepointUpperBound := minCheckpointTs - 1
-	err = upStream.GCManager.TryUpdateGCSafePoint(ctx, gcSafepointUpperBound, forceUpdate)
-	return errors.Trace(err)
+	return nil
 }
 
 // StatusProvider returns a StatusProvider

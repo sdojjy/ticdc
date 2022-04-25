@@ -12,9 +12,6 @@ type UpstreamID string
 // UpstreamInfo store in etcd.
 type UpstreamInfo struct {
 	PD       string `json:"pd"`
-	Key      string `json:"key"`
-	CA       string `json:"ca"`
-	Cert     string `json:"cert"`
 	KeyPath  string `json:"key-path"`
 	CAPath   string `json:"cat-path"`
 	CertPath string `json:"cert-path"`

@@ -15,6 +15,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -58,6 +59,7 @@ type changefeedCommonOptions struct {
 	cyclicSyncDDL          bool
 	syncPointEnabled       bool
 	syncPointInterval      time.Duration
+	clusterID              string
 	namespace              string
 }
 
@@ -85,7 +87,8 @@ func (o *changefeedCommonOptions) addFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().BoolVar(&o.cyclicSyncDDL, "cyclic-sync-ddl", true, "(Experimental) Cyclic replication sync DDL of changefeed")
 	cmd.PersistentFlags().BoolVar(&o.syncPointEnabled, "sync-point", false, "(Experimental) Set and Record syncpoint in replication(default off)")
 	cmd.PersistentFlags().DurationVar(&o.syncPointInterval, "sync-interval", 10*time.Minute, "(Experimental) Set the interval for syncpoint in replication(default 10min)")
-	cmd.PersistentFlags().StringVar(&o.namespace, "namespace", "default", "(Experimental) Set the interval for syncpoint in replication(default 10min)")
+	cmd.PersistentFlags().StringVar(&o.namespace, "namespace", "default", "changefeed namespace")
+	cmd.PersistentFlags().StringVar(&o.clusterID, "cluster-id", "default", "ticdc cluster id ")
 	_ = cmd.PersistentFlags().MarkHidden("sort-dir")
 }
 
@@ -386,6 +389,7 @@ func (o *createChangefeedOptions) validateSink(
 
 // run the `cli changefeed create` command.
 func (o *createChangefeedOptions) run(ctx context.Context, cmd *cobra.Command) error {
+	config.GetGlobalServerConfig().ClusterID = o.commonChangefeedOptions.clusterID
 	id := o.changefeedID
 	if id == "" {
 		id = uuid.New().String()
@@ -441,15 +445,23 @@ func (o *createChangefeedOptions) run(ctx context.Context, cmd *cobra.Command) e
 		return err
 	}
 
+	info.UpstreamID = fmt.Sprintf("%d", o.pdClient.GetClusterID(ctx))
 	infoStr, err := info.Marshal()
 	if err != nil {
 		return err
 	}
 
-	err = o.etcdClient.CreateChangefeedInfo(ctx, info, model.ChangeFeedID{
-		Namespace: o.commonChangefeedOptions.namespace,
-		ID:        o.changefeedID,
-	})
+	upstreamInfo := &model.UpstreamInfo{
+		PD:       o.pdAddr,
+		KeyPath:  o.credential.KeyPath,
+		CAPath:   o.credential.CAPath,
+		CertPath: o.credential.CertPath,
+	}
+	err = o.etcdClient.CreateChangefeedInfo(ctx, o.commonChangefeedOptions.clusterID, upstreamInfo, info,
+		model.ChangeFeedID{
+			Namespace: o.commonChangefeedOptions.namespace,
+			ID:        o.changefeedID,
+		})
 	if err != nil {
 		return err
 	}

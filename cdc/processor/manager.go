@@ -83,6 +83,11 @@ func (m *Manager) Tick(stdCtx context.Context, state orchestrator.ReactorState) 
 		return state, err
 	}
 
+	for key, info := range globalState.Upstreams {
+		if err := upstream.UpStreamManager.TryInit(key, info); err != nil {
+			return nil, errors.Trace(err)
+		}
+	}
 	captureID := ctx.GlobalVars().CaptureInfo.ID
 	var inactiveChangefeedCount int
 	for changefeedID, changefeedState := range globalState.Changefeeds {
@@ -99,7 +104,7 @@ func (m *Manager) Tick(stdCtx context.Context, state orchestrator.ReactorState) 
 		if !exist {
 			if m.enableNewScheduler {
 				failpoint.Inject("processorManagerHandleNewChangefeedDelay", nil)
-				upStream, err := upstream.UpStreamManager.Get(0)
+				upStream, err := upstream.UpStreamManager.Get(changefeedState.Info.UpstreamID)
 				if err != nil {
 					return state, err
 				}
@@ -115,7 +120,7 @@ func (m *Manager) Tick(stdCtx context.Context, state orchestrator.ReactorState) 
 					continue
 				}
 				failpoint.Inject("processorManagerHandleNewChangefeedDelay", nil)
-				upStream, err := upstream.UpStreamManager.Get(0)
+				upStream, err := upstream.UpStreamManager.Get(changefeedState.Info.UpstreamID)
 				if err != nil {
 					return state, err
 				}

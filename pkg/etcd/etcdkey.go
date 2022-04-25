@@ -171,6 +171,10 @@ func (k *CDCKey) Parse(key string) error {
 	return nil
 }
 
+func CDCClusterBase(id string) string {
+	return fmt.Sprintf("/tidb/cdc/%s", id)
+}
+
 func EtcdKeyBase() string {
 	return fmt.Sprintf("/tidb/cdc/%s", config.GetGlobalServerConfig().ClusterID)
 }
