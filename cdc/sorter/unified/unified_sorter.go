@@ -114,7 +114,7 @@ func (s *Sorter) Run(ctx context.Context) error {
 	defer finish()
 
 	ctx = context.WithValue(ctx, ctxKey{}, s)
-	ctx = contextutil.PutChangefeedIDInCtx(ctx, s.metricsInfo.changeFeedID.ID)
+	ctx = contextutil.PutChangefeedIDInCtx(ctx, s.metricsInfo.changeFeedID)
 	ctx = contextutil.PutTableInfoInCtx(ctx, s.metricsInfo.tableID, s.metricsInfo.tableName)
 
 	sorterConfig := config.GetGlobalServerConfig().Sorter
@@ -173,7 +173,7 @@ func (s *Sorter) Run(ctx context.Context) error {
 		changefeedID := contextutil.ChangefeedIDFromCtx(ctx)
 
 		metricSorterConsumeCount := sorterConsumeCount.MustCurryWith(map[string]string{
-			"changefeed": changefeedID,
+			"changefeed": changefeedID.ID,
 		})
 
 		nextSorterID := 0

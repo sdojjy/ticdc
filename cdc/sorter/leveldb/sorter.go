@@ -96,9 +96,9 @@ func NewSorter(
 ) (*Sorter, error) {
 	changefeedID := contextutil.ChangefeedIDFromCtx(ctx)
 	metricIterDuration := sorterIterReadDurationHistogram.MustCurryWith(
-		prometheus.Labels{"id": changefeedID})
-	metricTotalEventsKV := sorter.EventCount.WithLabelValues(changefeedID, "kv")
-	metricTotalEventsResolvedTs := sorter.EventCount.WithLabelValues(changefeedID, "resolved")
+		prometheus.Labels{"id": changefeedID.ID})
+	metricTotalEventsKV := sorter.EventCount.WithLabelValues(changefeedID.ID, "kv")
+	metricTotalEventsResolvedTs := sorter.EventCount.WithLabelValues(changefeedID.ID, "resolved")
 
 	// TODO: test capture the same table multiple times.
 	uid := allocID()

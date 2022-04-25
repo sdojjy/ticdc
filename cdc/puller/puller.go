@@ -125,20 +125,20 @@ func (p *pullerImpl) Run(ctx context.Context) error {
 
 	changefeedID := contextutil.ChangefeedIDFromCtx(ctx)
 	tableID, _ := contextutil.TableIDFromCtx(ctx)
-	metricOutputChanSize := outputChanSizeHistogram.WithLabelValues(changefeedID)
-	metricEventChanSize := eventChanSizeHistogram.WithLabelValues(changefeedID)
-	metricPullerResolvedTs := pullerResolvedTsGauge.WithLabelValues(changefeedID)
-	metricTxnCollectCounterKv := txnCollectCounter.WithLabelValues(changefeedID, "kv")
-	metricTxnCollectCounterResolved := txnCollectCounter.WithLabelValues(changefeedID, "resolved")
+	metricOutputChanSize := outputChanSizeHistogram.WithLabelValues(changefeedID.ID)
+	metricEventChanSize := eventChanSizeHistogram.WithLabelValues(changefeedID.ID)
+	metricPullerResolvedTs := pullerResolvedTsGauge.WithLabelValues(changefeedID.ID)
+	metricTxnCollectCounterKv := txnCollectCounter.WithLabelValues(changefeedID.ID, "kv")
+	metricTxnCollectCounterResolved := txnCollectCounter.WithLabelValues(changefeedID.ID, "resolved")
 	defer func() {
-		outputChanSizeHistogram.DeleteLabelValues(changefeedID)
-		eventChanSizeHistogram.DeleteLabelValues(changefeedID)
-		memBufferSizeGauge.DeleteLabelValues(changefeedID)
-		pullerResolvedTsGauge.DeleteLabelValues(changefeedID)
-		kvEventCounter.DeleteLabelValues(changefeedID, "kv")
-		kvEventCounter.DeleteLabelValues(changefeedID, "resolved")
-		txnCollectCounter.DeleteLabelValues(changefeedID, "kv")
-		txnCollectCounter.DeleteLabelValues(changefeedID, "resolved")
+		outputChanSizeHistogram.DeleteLabelValues(changefeedID.ID)
+		eventChanSizeHistogram.DeleteLabelValues(changefeedID.ID)
+		memBufferSizeGauge.DeleteLabelValues(changefeedID.ID)
+		pullerResolvedTsGauge.DeleteLabelValues(changefeedID.ID)
+		kvEventCounter.DeleteLabelValues(changefeedID.ID, "kv")
+		kvEventCounter.DeleteLabelValues(changefeedID.ID, "resolved")
+		txnCollectCounter.DeleteLabelValues(changefeedID.ID, "kv")
+		txnCollectCounter.DeleteLabelValues(changefeedID.ID, "resolved")
 	}()
 
 	lastResolvedTs := p.checkpointTs
@@ -153,7 +153,7 @@ func (p *pullerImpl) Run(ctx context.Context) error {
 			// resolved ts is not broken.
 			if raw.CRTs < p.resolvedTs || (raw.CRTs == p.resolvedTs && raw.OpType != model.OpTypeResolved) {
 				log.Warn("The CRTs is fallen back in puller",
-					zap.String("changefeed", changefeedID),
+					zap.String("changefeed", changefeedID.ID),
 					zap.Reflect("row", raw),
 					zap.Uint64("CRTs", raw.CRTs),
 					zap.Uint64("resolvedTs", p.resolvedTs),
@@ -195,7 +195,7 @@ func (p *pullerImpl) Run(ctx context.Context) error {
 				metricTxnCollectCounterResolved.Inc()
 				if !regionspan.IsSubSpan(e.Resolved.Span, p.spans...) {
 					log.Panic("the resolved span is not in the total span",
-						zap.String("changefeed", changefeedID),
+						zap.String("changefeed", changefeedID.ID),
 						zap.Reflect("resolved", e.Resolved),
 						zap.Int64("tableID", tableID),
 						zap.Reflect("spans", p.spans),
@@ -215,7 +215,7 @@ func (p *pullerImpl) Run(ctx context.Context) error {
 						spans = append(spans, p.spans[i].String())
 					}
 					log.Info("puller is initialized",
-						zap.String("changefeed", changefeedID),
+						zap.String("changefeed", changefeedID.ID),
 						zap.Duration("duration", time.Since(start)),
 						zap.Int64("tableID", tableID),
 						zap.Strings("spans", spans),

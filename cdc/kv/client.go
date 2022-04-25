@@ -1150,7 +1150,7 @@ func (s *eventFeedSession) receiveFromStream(
 	}()
 
 	changefeedID := contextutil.ChangefeedIDFromCtx(ctx)
-	metricSendEventBatchResolvedSize := batchResolvedEventSize.WithLabelValues(changefeedID)
+	metricSendEventBatchResolvedSize := batchResolvedEventSize.WithLabelValues(changefeedID.ID)
 
 	// always create a new region worker, because `receiveFromStream` is ensured
 	// to call exactly once from outter code logic

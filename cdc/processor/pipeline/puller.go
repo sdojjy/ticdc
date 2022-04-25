@@ -71,7 +71,7 @@ func (n *pullerNode) start(ctx pipeline.NodeContext, wg *errgroup.Group, isActor
 	ctxC, cancel := context.WithCancel(ctx)
 	ctxC = contextutil.PutTableInfoInCtx(ctxC, n.tableID, n.tableName)
 	ctxC = contextutil.PutCaptureAddrInCtx(ctxC, ctx.GlobalVars().CaptureInfo.AdvertiseAddr)
-	ctxC = contextutil.PutChangefeedIDInCtx(ctxC, ctx.ChangefeedVars().ID.ID)
+	ctxC = contextutil.PutChangefeedIDInCtx(ctxC, ctx.ChangefeedVars().ID)
 	ctxC = contextutil.PutRoleInCtx(ctxC, util.RoleProcessor)
 	// NOTICE: always pull the old value internally
 	// See also: https://github.com/pingcap/tiflow/issues/2301.

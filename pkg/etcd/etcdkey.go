@@ -119,8 +119,8 @@ func (k *CDCKey) Parse(key string) error {
 			return cerror.ErrInvalidEtcdKey.GenWithStackByArgs(key)
 		}
 	} else {
-		key = key[len(k.ClusterID)+1:]
 		k.Namespace = parts[2]
+		key = key[len(k.Namespace)+1:]
 		switch {
 		case strings.HasPrefix(key, changefeedInfoKey):
 			k.Tp = CDCKeyTypeChangefeedInfo

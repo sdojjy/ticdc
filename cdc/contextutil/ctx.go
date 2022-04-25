@@ -111,16 +111,16 @@ func IsOwnerFromCtx(ctx context.Context) bool {
 
 // ChangefeedIDFromCtx returns a changefeedID stored in the specified context.
 // It returns an empty string if there's no valid changefeed ID found.
-func ChangefeedIDFromCtx(ctx context.Context) string {
-	changefeedID, ok := ctx.Value(ctxKeyChangefeedID).(string)
+func ChangefeedIDFromCtx(ctx context.Context) model.ChangeFeedID {
+	changefeedID, ok := ctx.Value(ctxKeyChangefeedID).(model.ChangeFeedID)
 	if !ok {
-		return ""
+		return model.ChangeFeedID{}
 	}
 	return changefeedID
 }
 
 // PutChangefeedIDInCtx returns a new child context with the specified changefeed ID stored.
-func PutChangefeedIDInCtx(ctx context.Context, changefeedID string) context.Context {
+func PutChangefeedIDInCtx(ctx context.Context, changefeedID model.ChangeFeedID) context.Context {
 	return context.WithValue(ctx, ctxKeyChangefeedID, changefeedID)
 }
 
@@ -147,10 +147,5 @@ func ZapFieldCapture(ctx context.Context) zap.Field {
 
 // ZapFieldChangefeed returns a zap field containing changefeed id
 func ZapFieldChangefeed(ctx context.Context) zap.Field {
-	return zap.String("changefeed", ChangefeedIDFromCtx(ctx))
-}
-
-// ZapFieldChangefeeda returns a zap field containing changefeed id
-func ZapFieldChangefeeda(ctx context.Context, c model.ChangeFeedID) zap.Field {
-	return zap.String("changefeed", ChangefeedIDFromCtx(ctx))
+	return zap.String("changefeed", ChangefeedIDFromCtx(ctx).String())
 }

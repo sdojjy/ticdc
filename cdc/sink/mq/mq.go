@@ -68,7 +68,7 @@ type mqSink struct {
 	statistics *metrics.Statistics
 
 	role util.Role
-	id   string
+	id   model.ChangeFeedID
 }
 
 func newMqSink(
@@ -120,7 +120,7 @@ func newMqSink(
 			case errCh <- err:
 			default:
 				log.Error("error channel is full", zap.Error(err),
-					zap.String("changefeed", changefeedID), zap.Any("role", s.role))
+					zap.String("changefeed", changefeedID.ID), zap.Any("role", s.role))
 			}
 		}
 	}()
@@ -149,7 +149,7 @@ func (k *mqSink) EmitRowChangedEvents(ctx context.Context, rows ...*model.RowCha
 		if k.filter.ShouldIgnoreDMLEvent(row.StartTs, row.Table.Schema, row.Table.Table) {
 			log.Info("Row changed event ignored",
 				zap.Uint64("start-ts", row.StartTs),
-				zap.String("changefeed", k.id),
+				zap.String("changefeed", k.id.ID),
 				zap.Any("role", k.role))
 			continue
 		}
@@ -275,7 +275,7 @@ func (k *mqSink) EmitDDLEvent(ctx context.Context, ddl *model.DDLEvent) error {
 			zap.String("query", ddl.Query),
 			zap.Uint64("startTs", ddl.StartTs),
 			zap.Uint64("commitTs", ddl.CommitTs),
-			zap.String("changefeed", k.id),
+			zap.String("changefeed", k.id.ID),
 			zap.Any("role", k.role),
 		)
 		return cerror.ErrDDLEventIgnored.GenWithStackByArgs()
@@ -295,7 +295,7 @@ func (k *mqSink) EmitDDLEvent(ctx context.Context, ddl *model.DDLEvent) error {
 	k.statistics.AddDDLCount()
 	log.Debug("emit ddl event",
 		zap.Uint64("commitTs", ddl.CommitTs), zap.String("query", ddl.Query),
-		zap.String("changefeed", k.id), zap.Any("role", k.role))
+		zap.String("changefeed", k.id.ID), zap.Any("role", k.role))
 	if partitionRule == dispatcher.PartitionAll {
 		partitionNum, err := k.topicManager.Partitions(topic)
 		if err != nil {

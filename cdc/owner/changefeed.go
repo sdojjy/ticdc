@@ -330,7 +330,7 @@ LOOP:
 		ctx.Throw(c.ddlPuller.Run(cancelCtx))
 	}()
 
-	stdCtx := contextutil.PutChangefeedIDInCtx(cancelCtx, c.id.ID)
+	stdCtx := contextutil.PutChangefeedIDInCtx(cancelCtx, c.id)
 	redoManagerOpts := &redo.ManagerOptions{EnableBgRunner: false}
 	redoManager, err := redo.NewManager(stdCtx, c.state.Info.Config.Consistent, redoManagerOpts)
 	if err != nil {

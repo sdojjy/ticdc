@@ -20,6 +20,7 @@ import (
 
 	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/contextutil"
+	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
@@ -62,21 +63,21 @@ func NewStatistics(ctx context.Context, t sinkType) *Statistics {
 	}
 
 	s := t.String()
-	statistics.metricExecTxnHis = ExecTxnHistogram.WithLabelValues(statistics.changefeedID, s)
-	statistics.metricExecBatchHis = ExecBatchHistogram.WithLabelValues(statistics.changefeedID, s)
-	statistics.metricExecDDLHis = ExecDDLHistogram.WithLabelValues(statistics.changefeedID)
-	statistics.metricExecErrCnt = ExecutionErrorCounter.WithLabelValues(statistics.changefeedID)
+	statistics.metricExecTxnHis = ExecTxnHistogram.WithLabelValues(statistics.changefeedID.ID, s)
+	statistics.metricExecBatchHis = ExecBatchHistogram.WithLabelValues(statistics.changefeedID.ID, s)
+	statistics.metricExecDDLHis = ExecDDLHistogram.WithLabelValues(statistics.changefeedID.ID)
+	statistics.metricExecErrCnt = ExecutionErrorCounter.WithLabelValues(statistics.changefeedID.ID)
 
 	// Flush metrics in background for better accuracy and efficiency.
 	changefeedID := statistics.changefeedID
 	ticker := time.NewTicker(flushMetricsInterval)
 	go func() {
 		defer ticker.Stop()
-		metricTotalRows := TotalRowsCountGauge.WithLabelValues(changefeedID)
-		metricTotalFlushedRows := TotalFlushedRowsCountGauge.WithLabelValues(changefeedID)
+		metricTotalRows := TotalRowsCountGauge.WithLabelValues(changefeedID.ID)
+		metricTotalFlushedRows := TotalFlushedRowsCountGauge.WithLabelValues(changefeedID.ID)
 		defer func() {
-			TotalRowsCountGauge.DeleteLabelValues(changefeedID)
-			TotalFlushedRowsCountGauge.DeleteLabelValues(changefeedID)
+			TotalRowsCountGauge.DeleteLabelValues(changefeedID.ID)
+			TotalFlushedRowsCountGauge.DeleteLabelValues(changefeedID.ID)
 		}()
 		for {
 			select {
@@ -95,7 +96,7 @@ func NewStatistics(ctx context.Context, t sinkType) *Statistics {
 // Statistics maintains some status and metrics of the Sink
 type Statistics struct {
 	sinkType         sinkType
-	changefeedID     string
+	changefeedID     model.ChangeFeedID
 	totalRows        uint64
 	totalFlushedRows uint64
 	totalDDLCount    uint64
@@ -175,7 +176,7 @@ func (b *Statistics) PrintStatus(ctx context.Context) {
 
 	log.Info("sink replication status",
 		zap.Stringer("sinkType", b.sinkType),
-		zap.String("changefeed", b.changefeedID),
+		zap.String("changefeed", b.changefeedID.ID),
 		contextutil.ZapFieldCapture(ctx),
 		zap.Uint64("count", count),
 		zap.Uint64("qps", qps),
