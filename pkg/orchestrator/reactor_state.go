@@ -31,7 +31,7 @@ type GlobalReactorState struct {
 	Owner          map[string]struct{}
 	Captures       map[model.CaptureID]*model.CaptureInfo
 	Changefeeds    map[model.ChangeFeedID]*ChangefeedReactorState
-	Upstreams      map[model.UpstreamID]*model.UpstreamInfo
+	Upstreams      map[string]*model.UpstreamInfo
 	pendingPatches [][]DataPatch
 
 	// onCaptureAdded and onCaptureRemoved are hook functions
@@ -115,27 +115,24 @@ func (s *GlobalReactorState) Update(key util.EtcdKey, value []byte, _ bool) erro
 	case etcd.CDCKeyTypeUpstream:
 		if value == nil {
 			log.Info("upstream is deleted",
-				zap.String("captureID", k.CaptureID),
-				zap.Any("info", s.Captures[k.CaptureID]))
-			delete(s.Captures, k.CaptureID)
-			if s.onCaptureRemoved != nil {
-				s.onCaptureRemoved(k.CaptureID)
-			}
+				zap.String("upstreamID", k.UpstreamClusterID),
+				zap.Any("info", s.Upstreams[k.UpstreamClusterID]))
+			delete(s.Upstreams, k.UpstreamClusterID)
 			return nil
 		}
 
-		var newCaptureInfo model.CaptureInfo
-		err := newCaptureInfo.Unmarshal(value)
+		var newUpstreamInfo model.UpstreamInfo
+		err := newUpstreamInfo.Unmarshal(value)
 		if err != nil {
 			return cerrors.ErrUnmarshalFailed.Wrap(err).GenWithStackByArgs()
 		}
 
-		log.Info("remote capture online",
-			zap.String("captureID", k.CaptureID), zap.Any("info", newCaptureInfo))
-		if s.onCaptureAdded != nil {
-			s.onCaptureAdded(k.CaptureID, newCaptureInfo.AdvertiseAddr)
-		}
-		s.Captures[k.CaptureID] = &newCaptureInfo
+		log.Info("new upstream online",
+			zap.String("upstreamID", k.UpstreamClusterID), zap.Any("info", newUpstreamInfo))
+		//if s.onCaptureAdded != nil {
+		//	s.onCaptureAdded(k.CaptureID, newCaptureInfo.AdvertiseAddr)
+		//}
+		s.Upstreams[k.UpstreamClusterID] = &newUpstreamInfo
 	default:
 		log.Warn("receive an unexpected etcd event", zap.String("key", key.String()), zap.ByteString("value", value))
 	}

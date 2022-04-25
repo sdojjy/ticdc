@@ -36,7 +36,7 @@ const (
 
 	changefeedInfoKey = "/changefeed/info"
 	jobKey            = "/job"
-	upstreamInfoKey   = "/upstream/info"
+	upstreamInfoKey   = "/upstream"
 )
 
 // CDCKeyType is the type of etcd key
@@ -80,13 +80,13 @@ const (
 
 */
 type CDCKey struct {
-	Tp           CDCKeyType
-	ChangefeedID string
-	CaptureID    string
-	OwnerLeaseID string
-	Namespace    string
-	ClusterID    string
-	UpstreamID   string
+	Tp                CDCKeyType
+	ChangefeedID      string
+	CaptureID         string
+	OwnerLeaseID      string
+	Namespace         string
+	ClusterID         string
+	UpstreamClusterID string
 }
 
 // Parse parses the given etcd key
@@ -115,6 +115,11 @@ func (k *CDCKey) Parse(key string) error {
 			k.CaptureID = key[len(captureKey)+1:]
 			k.ChangefeedID = ""
 			k.OwnerLeaseID = ""
+		case strings.HasPrefix(key, upstreamInfoKey):
+			k.Tp = CDCKeyTypeUpstream
+			k.CaptureID = ""
+			k.UpstreamClusterID = key[len(upstreamInfoKey)+1:]
+			k.OwnerLeaseID = ""
 		default:
 			return cerror.ErrInvalidEtcdKey.GenWithStackByArgs(key)
 		}
@@ -126,11 +131,6 @@ func (k *CDCKey) Parse(key string) error {
 			k.Tp = CDCKeyTypeChangefeedInfo
 			k.CaptureID = ""
 			k.ChangefeedID = key[len(changefeedInfoKey)+1:]
-			k.OwnerLeaseID = ""
-		case strings.HasPrefix(key, upstreamInfoKey):
-			k.Tp = CDCKeyTypeUpstream
-			k.CaptureID = ""
-			k.UpstreamID = key[len(upstreamInfoKey)+1:]
 			k.OwnerLeaseID = ""
 		case strings.HasPrefix(key, jobKey):
 			k.Tp = CDCKeyTypeChangeFeedStatus
@@ -199,7 +199,7 @@ func (k *CDCKey) String() string {
 	case CDCKeyTypeTaskWorkload:
 		return NamespacedPrefix(k.Namespace) + taskWorkloadKey + "/" + k.CaptureID + "/" + k.ChangefeedID
 	case CDCKeyTypeUpstream:
-		return NamespacedPrefix(k.Namespace) + upstreamInfoKey + "/" + k.UpstreamID
+		return NamespacedPrefix(k.Namespace) + upstreamInfoKey + "/" + k.UpstreamClusterID
 	}
 	log.Panic("unreachable")
 	return ""

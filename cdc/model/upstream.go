@@ -7,18 +7,17 @@ import (
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 )
 
-type UpstreamID struct {
-	Namespace string
-	ClusterID string
-}
+type UpstreamID string
 
 // UpstreamInfo store in etcd.
 type UpstreamInfo struct {
-	ClusterID string `json:"cluster-id"`
-	PD        string `json:"pd"`
-	Key       string `json:"version"`
-	CA        string `json:"ca"`
-	Cert      string `json:"cert"`
+	PD       string `json:"pd"`
+	Key      string `json:"key"`
+	CA       string `json:"ca"`
+	Cert     string `json:"cert"`
+	KeyPath  string `json:"key-path"`
+	CAPath   string `json:"cat-path"`
+	CertPath string `json:"cert-path"`
 }
 
 // Marshal using json.Marshal.

@@ -41,7 +41,7 @@ const (
 	// When EtcdWorker commits a txn to etcd or ticks its reactor
 	// takes more than etcdWorkerLogsWarnDuration, it will print a log
 	etcdWorkerLogsWarnDuration = 1 * time.Second
-	deletionCounterKey         = "/meta/ticdc-delete-etcd-key-count"
+	deletionCounterKey         = "/__cdc_meta__/meta/ticdc-delete-etcd-key-count"
 )
 
 // EtcdWorker handles all interactions with Etcd
