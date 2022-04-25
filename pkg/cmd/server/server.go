@@ -126,6 +126,10 @@ func (o *options) run(cmd *cobra.Command) error {
 		return errors.Annotate(err, "can not load timezone, Please specify the time zone through environment variable `TZ` or command line parameters `--tz`")
 	}
 
+	// ticdc 开启支持多上游
+	o.serverConfig.Debug.ServerPdAddr = o.serverPdAddr
+	o.serverConfig.Debug.EnableMultiUpStream = true
+
 	config.StoreGlobalServerConfig(o.serverConfig)
 	ctx := ctx2.PutTimezoneInCtx(cmdcontext.GetDefaultContext(), tz)
 	ctx = ctx2.PutCaptureAddrInCtx(ctx, o.serverConfig.AdvertiseAddr)

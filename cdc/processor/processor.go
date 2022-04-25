@@ -43,6 +43,7 @@ import (
 	"github.com/pingcap/tiflow/pkg/orchestrator"
 	"github.com/pingcap/tiflow/pkg/regionspan"
 	"github.com/pingcap/tiflow/pkg/retry"
+	"github.com/pingcap/tiflow/pkg/upstream"
 	"github.com/pingcap/tiflow/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/tikv/client-go/v2/oracle"
@@ -55,9 +56,12 @@ const (
 )
 
 type processor struct {
+	clusterID    uint64
 	changefeedID model.ChangeFeedID
 	captureInfo  *model.CaptureInfo
 	changefeed   *orchestrator.ChangefeedReactorState
+
+	upStream *upstream.UpStream
 
 	tables map[model.TableID]tablepipeline.TablePipeline
 
@@ -226,10 +230,11 @@ func (p *processor) GetCheckpoint() (checkpointTs, resolvedTs model.Ts) {
 }
 
 // newProcessor creates a new processor
-func newProcessor(ctx cdcContext.Context) *processor {
+func newProcessor(ctx cdcContext.Context, upStream *upstream.UpStream) *processor {
 	changefeedID := ctx.ChangefeedVars().ID
 	conf := config.GetGlobalServerConfig()
 	p := &processor{
+		upStream:      upStream,
 		tables:        make(map[model.TableID]tablepipeline.TablePipeline),
 		errCh:         make(chan error, 1),
 		changefeedID:  changefeedID,
@@ -360,7 +365,7 @@ func (p *processor) tick(ctx cdcContext.Context, state *orchestrator.ChangefeedR
 	}
 	// it is no need to check the error here, because we will use
 	// local time when an error return, which is acceptable
-	pdTime, _ := ctx.GlobalVars().PDClock.CurrentTime()
+	pdTime, _ := p.upStream.PDClock.CurrentTime()
 
 	p.handlePosition(oracle.GetPhysical(pdTime))
 	p.pushResolvedTs2Table()
@@ -425,7 +430,7 @@ func (p *processor) lazyInitImpl(ctx cdcContext.Context) error {
 	}
 	ctx, cancel := cdcContext.WithCancel(ctx)
 	p.cancel = cancel
-
+	p.clusterID = p.upStream.PDClient.GetClusterID(ctx)
 	// We don't close this error channel, since it is only safe to close channel
 	// in sender, and this channel will be used in many modules including sink,
 	// redo log manager, etc. Let runtime GC to recycle it.
@@ -671,7 +676,7 @@ func (p *processor) handleTableOperation(ctx cdcContext.Context) error {
 }
 
 func (p *processor) createAndDriveSchemaStorage(ctx cdcContext.Context) (entry.SchemaStorage, error) {
-	kvStorage := ctx.GlobalVars().KVStorage
+	kvStorage := p.upStream.KVStorage
 	ddlspans := []regionspan.Span{regionspan.GetDDLSpan(), regionspan.GetAddIndexDDLSpan()}
 	checkpointTs := p.changefeed.Info.GetCheckpointTs(p.changefeed.Status)
 	stdCtx := contextutil.PutTableInfoInCtx(ctx, -1, puller.DDLPullerTableName)
@@ -679,11 +684,11 @@ func (p *processor) createAndDriveSchemaStorage(ctx cdcContext.Context) (entry.S
 	stdCtx = contextutil.PutRoleInCtx(stdCtx, util.RoleProcessor)
 	ddlPuller := puller.NewPuller(
 		stdCtx,
-		ctx.GlobalVars().PDClient,
-		ctx.GlobalVars().GrpcPool,
-		ctx.GlobalVars().RegionCache,
-		ctx.GlobalVars().KVStorage,
-		ctx.GlobalVars().PDClock,
+		p.upStream.PDClient,
+		p.upStream.GrpcPool,
+		p.upStream.RegionCache,
+		p.upStream.KVStorage,
+		p.upStream.PDClock,
 		ctx.ChangefeedVars().ID.String(),
 		checkpointTs, ddlspans, false)
 	meta, err := kv.GetSnapshotMeta(kvStorage, checkpointTs)
@@ -1015,6 +1020,7 @@ func (p *processor) createTablePipelineImpl(
 		var err error
 		table, err = tablepipeline.NewTableActor(
 			ctx,
+			p.upStream,
 			p.mounter,
 			tableID,
 			tableName,
@@ -1138,7 +1144,7 @@ func (p *processor) Close() error {
 			zap.String("changefeed", p.changefeedID.String()),
 			zap.Duration("duration", time.Since(start)))
 	}
-
+	upstream.UpStreamManager.Release(p.clusterID)
 	// mark tables share the same cdcContext with its original table, don't need to cancel
 	failpoint.Inject("processorStopDelay", nil)
 	resolvedTsGauge.DeleteLabelValues(p.changefeedID.String())

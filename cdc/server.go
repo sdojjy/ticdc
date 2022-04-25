@@ -21,14 +21,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
 	tidbkv "github.com/pingcap/tidb/kv"
-	"github.com/pingcap/tiflow/cdc/contextutil"
 	"github.com/prometheus/client_golang/prometheus"
 	pd "github.com/tikv/pd/client"
 	"go.etcd.io/etcd/client/pkg/v3/logutil"
@@ -49,6 +47,7 @@ import (
 	"github.com/pingcap/tiflow/pkg/httputil"
 	"github.com/pingcap/tiflow/pkg/p2p"
 	"github.com/pingcap/tiflow/pkg/tcpserver"
+	"github.com/pingcap/tiflow/pkg/upstream"
 	"github.com/pingcap/tiflow/pkg/version"
 	p2pProto "github.com/pingcap/tiflow/proto/p2p"
 )
@@ -118,6 +117,7 @@ func (s *Server) Run(ctx context.Context) error {
 		return errors.Trace(err)
 	}
 
+	// 此处的 pdClient 用来做版本检查，之后想办法去掉
 	pdClient, err := pd.NewClientWithContext(
 		ctx, s.pdEndpoints, conf.Security.PDSecurityOption(),
 		pd.WithGRPCDialOptions(
@@ -187,18 +187,19 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 
 	kv.InitWorkerPool()
-	kvStore, err := kv.CreateTiStore(strings.Join(s.pdEndpoints, ","), conf.Security)
-	if err != nil {
-		return errors.Trace(err)
-	}
-	defer func() {
-		err := kvStore.Close()
-		if err != nil {
-			log.Warn("kv store close failed", zap.Error(err))
-		}
-	}()
-	s.kvStorage = kvStore
-	ctx = contextutil.PutKVStorageInCtx(ctx, kvStore)
+
+	// kvStore, err := kv.CreateTiStore(strings.Join(s.pdEndpoints, ","), conf.Security)
+	// if err != nil {
+	// 	return errors.Trace(err)
+	// }
+	// defer func() {
+	// 	err := kvStore.Close()
+	// 	if err != nil {
+	// 		log.Warn("kv store close failed", zap.Error(err))
+	// 	}
+	// }()
+	// s.kvStorage = kvStore
+	// ctx = contextutil.PutKVStorageInCtx(ctx, kvStore)
 
 	s.capture = capture.NewCapture(s.pdClient, s.kvStorage, s.etcdClient, s.grpcService)
 
@@ -206,6 +207,9 @@ func (s *Server) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
+	// 全局变量
+	upstream.UpStreamManager = upstream.NewManager(ctx)
 
 	return s.run(ctx)
 }
@@ -301,6 +305,10 @@ func (s *Server) run(ctx context.Context) (err error) {
 
 	wg.Go(func() error {
 		return s.tcpServer.Run(cctx)
+	})
+
+	wg.Go(func() error {
+		return upstream.UpStreamManager.Run(cctx)
 	})
 
 	conf := config.GetGlobalServerConfig()
