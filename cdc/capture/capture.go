@@ -25,6 +25,7 @@ import (
 	"github.com/pingcap/failpoint"
 	"github.com/pingcap/log"
 	tidbkv "github.com/pingcap/tidb/kv"
+	"github.com/pingcap/tiflow/cdc/owner/migration"
 	pd "github.com/tikv/pd/client"
 	"go.etcd.io/etcd/client/v3/concurrency"
 	"go.etcd.io/etcd/server/v3/mvcc"
@@ -87,7 +88,7 @@ type Capture struct {
 	cancel context.CancelFunc
 
 	newProcessorManager func() *processor.Manager
-	newOwner            func() owner.Owner
+	newOwner            func(cli *etcd.CDCEtcdClient) owner.Owner
 }
 
 // NewCapture returns a new Capture instance
@@ -304,6 +305,13 @@ func (c *Capture) run(stdCtx context.Context) error {
 		conf := config.GetGlobalServerConfig()
 		processorFlushInterval := time.Duration(conf.ProcessorFlushInterval)
 
+		//check schema version here, block util schema version is matched
+		_, err := migration.WaitSchemaVersionMatched(stdCtx, c.EtcdClient)
+		if err != nil {
+			//todo: handle error
+			panic(err)
+		}
+
 		globalState := orchestrator.NewGlobalState()
 
 		if c.enableNewScheduler {
@@ -416,7 +424,7 @@ func (c *Capture) campaignOwner(ctx cdcContext.Context) error {
 			zap.String("captureID", c.info.ID),
 			zap.Int64("ownerRev", ownerRev))
 
-		owner := c.newOwner()
+		owner := c.newOwner(c.EtcdClient)
 		c.setOwner(owner)
 
 		globalState := orchestrator.NewGlobalState()

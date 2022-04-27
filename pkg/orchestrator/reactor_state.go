@@ -58,6 +58,8 @@ func (s *GlobalReactorState) Update(key util.EtcdKey, value []byte, _ bool) erro
 		return errors.Trace(err)
 	}
 	switch k.Tp {
+	case etcd.CDCKeyTypeSchemaVersion:
+		return nil
 	case etcd.CDCKeyTypeOwner:
 		if value != nil {
 			s.Owner[k.OwnerLeaseID] = struct{}{}

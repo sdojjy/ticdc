@@ -26,9 +26,11 @@ import (
 	"github.com/pingcap/failpoint"
 	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/model"
+	"github.com/pingcap/tiflow/cdc/owner/migration"
 	"github.com/pingcap/tiflow/pkg/config"
 	cdcContext "github.com/pingcap/tiflow/pkg/context"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
+	"github.com/pingcap/tiflow/pkg/etcd"
 	"github.com/pingcap/tiflow/pkg/orchestrator"
 	"github.com/pingcap/tiflow/pkg/upstream"
 	"github.com/pingcap/tiflow/pkg/version"
@@ -110,17 +112,20 @@ type ownerImpl struct {
 	//         as it is not a thread-safe value.
 	bootstrapped bool
 
+	cli *etcd.CDCEtcdClient
+
 	newChangefeed func(id model.ChangeFeedID, upStream *upstream.UpStream) *changefeed
 }
 
 // NewOwner creates a new Owner
-func NewOwner() Owner {
+func NewOwner(cli *etcd.CDCEtcdClient) Owner {
 	return &ownerImpl{
 		changefeeds: make(map[model.ChangeFeedID]*changefeed),
 		// gcManager:     gc.NewManager(pdClient),
 		lastTickTime:  time.Now(),
 		newChangefeed: newChangefeed,
 		logLimiter:    rate.NewLimiter(versionInconsistentLogRate, versionInconsistentLogRate),
+		cli:           cli,
 	}
 }
 
@@ -130,7 +135,7 @@ func NewOwner4Test(
 	newSink func() DDLSink,
 	pdClient pd.Client,
 ) Owner {
-	o := NewOwner().(*ownerImpl)
+	o := NewOwner(nil).(*ownerImpl)
 	// Most tests do not need to test bootstrap.
 	o.bootstrapped = true
 	o.newChangefeed = func(id model.ChangeFeedID, upStream *upstream.UpStream) *changefeed {
@@ -149,6 +154,10 @@ func (o *ownerImpl) Tick(stdCtx context.Context, rawState orchestrator.ReactorSt
 	// At the first Tick, we need to do a bootstrap operation.
 	// Fix incompatible or incorrect meta information.
 	if !o.bootstrapped {
+		done, err := migration.MigrateData(stdCtx, o.cli)
+		if !done {
+			return state, errors.Trace(err)
+		}
 		o.Bootstrap(state)
 		o.bootstrapped = true
 		return state, nil
