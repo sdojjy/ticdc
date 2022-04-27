@@ -87,7 +87,7 @@ type Capture struct {
 	cancel context.CancelFunc
 
 	newProcessorManager func() *processor.Manager
-	newOwner            func() owner.Owner
+	newOwner            func(cli *etcd.CDCEtcdClient) owner.Owner
 }
 
 // NewCapture returns a new Capture instance
@@ -416,7 +416,7 @@ func (c *Capture) campaignOwner(ctx cdcContext.Context) error {
 			zap.String("captureID", c.info.ID),
 			zap.Int64("ownerRev", ownerRev))
 
-		owner := c.newOwner()
+		owner := c.newOwner(c.EtcdClient)
 		c.setOwner(owner)
 
 		globalState := orchestrator.NewGlobalState()

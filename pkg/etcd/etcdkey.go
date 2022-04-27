@@ -179,6 +179,10 @@ func EtcdKeyBase() string {
 	return fmt.Sprintf("/tidb/cdc/%s", config.GetGlobalServerConfig().ClusterID)
 }
 
+func CDCMetaBase() string {
+	return fmt.Sprintf("%s%s", EtcdKeyBase(), CDCMetaPrefix)
+}
+
 func NamespacedPrefix(namespace string) string {
 	return EtcdKeyBase() + "/" + namespace
 }
