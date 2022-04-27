@@ -1,14 +1,3 @@
-package migration
-
-import (
-	"context"
-	"strconv"
-	"time"
-
-	"github.com/pingcap/errors"
-	"github.com/pingcap/tiflow/pkg/etcd"
-)
-
 // Copyright 2021 PingCAP, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +10,17 @@ import (
 // distributed under the License is distributed on an "AS IS" BASIS,
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+package migration
+
+import (
+	"context"
+	"strconv"
+	"time"
+
+	"github.com/pingcap/errors"
+	"github.com/pingcap/tiflow/pkg/etcd"
+)
 
 func WaitSchemaVersionMatched(stdCtx context.Context, cli *etcd.CDCEtcdClient) (int, error) {
 	tick := time.NewTicker(time.Second)
