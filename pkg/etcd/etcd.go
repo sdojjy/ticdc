@@ -17,6 +17,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/pingcap/errors"
@@ -133,7 +134,7 @@ func (c CDCEtcdClient) GetChangeFeeds(ctx context.Context) (int64, map[string]*m
 	//revision := resp.Header.Revision
 	//details := make(map[string]*mvccpb.KeyValue, resp.Count)
 	//for _, kv := range resp.Kvs {
-	//	id, err := model.ExtractKeySuffix(string(kv.Key))
+	//	id, err := extractKeySuffix(string(kv.Key))
 	//	if err != nil {
 	//		return 0, nil, err
 	//	}
@@ -192,7 +193,7 @@ func (c CDCEtcdClient) GetAllChangeFeedStatus(ctx context.Context) (map[string]*
 	//}
 	//statuses := make(map[string]*model.ChangeFeedStatus, resp.Count)
 	//for _, rawKv := range resp.Kvs {
-	//	changefeedID, err := model.ExtractKeySuffix(string(rawKv.Key))
+	//	changefeedID, err := extractKeySuffix(string(rawKv.Key))
 	//	if err != nil {
 	//		return nil, err
 	//	}
@@ -280,7 +281,7 @@ func (c CDCEtcdClient) GetCaptureLeases(ctx context.Context) (map[string]int64, 
 	}
 	leases := make(map[string]int64, resp.Count)
 	for _, kv := range resp.Kvs {
-		captureID, err := model.ExtractKeySuffix(string(kv.Key))
+		captureID, err := extractKeySuffix(string(kv.Key))
 		if err != nil {
 			return nil, err
 		}
@@ -380,12 +381,12 @@ func (c CDCEtcdClient) GetProcessors(ctx context.Context) ([]*model.ProcInfoSnap
 	//}
 	//infos := make([]*model.ProcInfoSnap, 0, resp.Count)
 	//for _, rawKv := range resp.Kvs {
-	//	changefeedID, err := model.ExtractKeySuffix(string(rawKv.Key))
+	//	changefeedID, err := extractKeySuffix(string(rawKv.Key))
 	//	if err != nil {
 	//		return nil, err
 	//	}
 	//	endIndex := len(rawKv.Key) - len(changefeedID) - 1
-	//	captureID, err := model.ExtractKeySuffix(string(rawKv.Key[0:endIndex]))
+	//	captureID, err := extractKeySuffix(string(rawKv.Key[0:endIndex]))
 	//	if err != nil {
 	//		return nil, err
 	//	}
@@ -407,12 +408,12 @@ func (c CDCEtcdClient) GetAllTaskStatus(ctx context.Context, changefeedID string
 	//}
 	//pinfo := make(map[string]*model.TaskStatus, resp.Count)
 	//for _, rawKv := range resp.Kvs {
-	//	changeFeed, err := model.ExtractKeySuffix(string(rawKv.Key))
+	//	changeFeed, err := extractKeySuffix(string(rawKv.Key))
 	//	if err != nil {
 	//		return nil, err
 	//	}
 	//	endIndex := len(rawKv.Key) - len(changeFeed) - 1
-	//	captureID, err := model.ExtractKeySuffix(string(rawKv.Key[0:endIndex]))
+	//	captureID, err := extractKeySuffix(string(rawKv.Key[0:endIndex]))
 	//	if err != nil {
 	//		return nil, err
 	//	}
@@ -484,12 +485,12 @@ func (c CDCEtcdClient) GetAllTaskPositions(ctx context.Context, changefeedID str
 	//}
 	//positions := make(map[string]*model.TaskPosition, resp.Count)
 	//for _, rawKv := range resp.Kvs {
-	//	changeFeed, err := model.ExtractKeySuffix(string(rawKv.Key))
+	//	changeFeed, err := extractKeySuffix(string(rawKv.Key))
 	//	if err != nil {
 	//		return nil, err
 	//	}
 	//	endIndex := len(rawKv.Key) - len(changeFeed) - 1
-	//	captureID, err := model.ExtractKeySuffix(string(rawKv.Key[0:endIndex]))
+	//	captureID, err := extractKeySuffix(string(rawKv.Key[0:endIndex]))
 	//	if err != nil {
 	//		return nil, err
 	//	}
@@ -664,4 +665,14 @@ func SetupEmbedEtcd(dir string) (clientURL *url.URL, e *embed.Etcd, err error) {
 	}
 
 	return
+}
+
+// extractKeySuffix extracts the suffix of an etcd key, such as extracting
+// "6a6c6dd290bc8732" from /tidb/cdc/changefeed/info/6a6c6dd290bc8732
+func extractKeySuffix(key string) (string, error) {
+	subs := strings.Split(key, "/")
+	if len(subs) < 2 {
+		return "", cerror.ErrInvalidEtcdKey.GenWithStackByArgs(key)
+	}
+	return subs[len(subs)-1], nil
 }

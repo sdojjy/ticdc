@@ -15,6 +15,7 @@ package model
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/url"
 	"regexp"
@@ -30,6 +31,23 @@ import (
 	"github.com/tikv/client-go/v2/oracle"
 	"go.uber.org/zap"
 )
+
+// ChangeFeedID is the type for change feed ID
+type ChangeFeedID struct {
+	Namespace string `json:"namespace"`
+	ID        string `json:"id"`
+}
+
+func NewDefaultChangefeedID(id string) ChangeFeedID {
+	return ChangeFeedID{
+		Namespace: "default",
+		ID:        id,
+	}
+}
+
+func (c ChangeFeedID) String() string {
+	return fmt.Sprintf("%s-%s", c.Namespace, c.ID)
+}
 
 // SortEngine is the sorter engine
 type SortEngine = string
