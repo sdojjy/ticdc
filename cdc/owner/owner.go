@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,6 +26,7 @@ import (
 	"github.com/pingcap/failpoint"
 	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/model"
+	"github.com/pingcap/tiflow/cdc/owner/migration"
 	"github.com/pingcap/tiflow/pkg/config"
 	cdcContext "github.com/pingcap/tiflow/pkg/context"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
@@ -35,9 +35,6 @@ import (
 	"github.com/pingcap/tiflow/pkg/upstream"
 	"github.com/pingcap/tiflow/pkg/version"
 	pd "github.com/tikv/pd/client"
-	clientv3 "go.etcd.io/etcd/client/v3"
-	"go.etcd.io/etcd/client/v3/concurrency"
-	"go.etcd.io/etcd/mvcc"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 )
@@ -128,6 +125,7 @@ func NewOwner(cli *etcd.CDCEtcdClient) Owner {
 		lastTickTime:  time.Now(),
 		newChangefeed: newChangefeed,
 		logLimiter:    rate.NewLimiter(versionInconsistentLogRate, versionInconsistentLogRate),
+		cli:           cli,
 	}
 }
 
@@ -156,94 +154,10 @@ func (o *ownerImpl) Tick(stdCtx context.Context, rawState orchestrator.ReactorSt
 	// At the first Tick, we need to do a bootstrap operation.
 	// Fix incompatible or incorrect meta information.
 	if !o.bootstrapped {
-
-		schemaVersionKey := etcd.CDCMetaBase() + "/meta/schema-version"
-		//do etcd
-		resp, err := o.cli.Client.Get(stdCtx, schemaVersionKey)
-		if err != nil {
-			return nil, errors.Trace(err)
+		done, err := migration.MigrateData(stdCtx, o.cli)
+		if !done {
+			return state, errors.Trace(err)
 		}
-		shouldMigration := false
-		destVersion := 1
-		initVersion := false
-		var oldVersion int
-		if len(resp.Kvs) == 0 {
-			shouldMigration = true
-			initVersion = true
-		} else {
-			oldVersion, err = strconv.Atoi(string(resp.Kvs[0].Value))
-			if err != nil {
-				return nil, errors.Trace(err)
-			}
-			if oldVersion >= destVersion {
-				shouldMigration = true
-			} else {
-				shouldMigration = false
-			}
-		}
-		if shouldMigration {
-			sess, err := concurrency.NewSession(o.cli.Client.Unwrap(),
-				concurrency.WithTTL(5))
-			if err != nil {
-				return nil, errors.Trace(err)
-			}
-			//campaign old cluster owner
-			election := concurrency.NewElection(sess, "/tidb/cdc/owner")
-			electionCtx, cancel := context.WithTimeout(stdCtx, time.Second*2)
-			defer cancel()
-			if err := election.Campaign(electionCtx, "migration"); err != nil {
-				switch errors.Cause(err) {
-				case context.Canceled, mvcc.ErrCompacted:
-				default:
-					// if campaign owner failed, restart capture
-					log.Warn("campaign owner failed", zap.Error(err))
-				}
-				return state, nil
-			}
-			// I'm the leader now, migrate date, migration following keys
-			//1. /tidb/cdc/changefeed/info/<changfeed-id>
-			//2. /tidb/cdc/job/<changfeed-id>
-			var cmps []clientv3.Cmp
-			var opsThen []clientv3.Op
-			var txnEmptyOpsElse = []clientv3.Op{}
-			for _, mkey := range []string{"/tidb/cdc/changefeed/info", "/tidb/cdc/job"} {
-				resp, err = o.cli.Client.Get(stdCtx, mkey, clientv3.WithPrefix())
-				if err != nil {
-					return nil, errors.Trace(err)
-				}
-				for _, v := range resp.Kvs {
-					oldKey := string(v.Key)
-					//update key
-					newKey := "/tidb/cdc/default/default" + oldKey[len("/tidb/cdc"):]
-					//check new is not exists and old is exists
-					cmps = append(cmps, clientv3.Compare(clientv3.CreateRevision(newKey), "=", 0))
-					cmps = append(cmps, clientv3.Compare(clientv3.ModRevision(oldKey), "!=", 0))
-					// migrate data
-					opsThen = append(opsThen, clientv3.OpPut(newKey, string(v.Value)))
-					// delete old key?
-					//opsThen = append(opsThen, clientv3.OpDelete(oldKey))
-				}
-			}
-			//check if the version is not changed
-			if initVersion {
-				cmps = append(cmps, clientv3.Compare(clientv3.CreateRevision(schemaVersionKey), "=", 0))
-			} else {
-				cmps = append(cmps, clientv3.Compare(clientv3.Value(schemaVersionKey), "=", fmt.Sprintf("%d", oldVersion)))
-			}
-			//update the schema version
-			opsThen = append(opsThen, clientv3.OpPut(schemaVersionKey, fmt.Sprintf("%d", destVersion)))
-
-			txnResp, err := o.cli.Client.Txn(stdCtx, cmps, opsThen, txnEmptyOpsElse)
-			if err != nil {
-				return nil, cerror.WrapError(cerror.ErrPDEtcdAPIError, err)
-			}
-			if !txnResp.Succeeded {
-				log.Warn("migration compare failed")
-				return nil, cerror.WrapError(cerror.ErrPDEtcdAPIError, err)
-			}
-			log.Info("etcd data migration done")
-		}
-
 		o.Bootstrap(state)
 		o.bootstrapped = true
 		return state, nil

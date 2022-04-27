@@ -37,6 +37,7 @@ const (
 	changefeedInfoKey = "/changefeed/info"
 	jobKey            = "/job"
 	upstreamInfoKey   = "/upstream"
+	SchemaVersionKey  = "/meta/schema-version"
 )
 
 // CDCKeyType is the type of etcd key
@@ -53,6 +54,7 @@ const (
 	CDCKeyTypeTaskStatus
 	CDCKeyTypeTaskWorkload
 	CDCKeyTypeUpstream
+	CDCKeyTypeSchemaVersion
 )
 
 // CDCKey represents a etcd key which is defined by TiCDC
@@ -119,6 +121,11 @@ func (k *CDCKey) Parse(key string) error {
 			k.Tp = CDCKeyTypeUpstream
 			k.CaptureID = ""
 			k.UpstreamClusterID = key[len(upstreamInfoKey)+1:]
+			k.OwnerLeaseID = ""
+		case strings.HasPrefix(key, SchemaVersionKey):
+			k.Tp = CDCKeyTypeSchemaVersion
+			k.CaptureID = ""
+			k.UpstreamClusterID = ""
 			k.OwnerLeaseID = ""
 		default:
 			return cerror.ErrInvalidEtcdKey.GenWithStackByArgs(key)
