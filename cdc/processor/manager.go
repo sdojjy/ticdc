@@ -27,6 +27,7 @@ import (
 	cdcContext "github.com/pingcap/tiflow/pkg/context"
 	cerrors "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/orchestrator"
+	"github.com/pingcap/tiflow/pkg/upstream"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
@@ -49,10 +50,11 @@ type command struct {
 // Manager is a manager of processor, which maintains the state and behavior of processors
 type Manager struct {
 	processors map[model.ChangeFeedID]*processor
+	upStreams  map[model.ChangeFeedID]*upstream.UpStream
 
 	commandQueue chan *command
 
-	newProcessor func(cdcContext.Context) *processor
+	newProcessor func(cdcContext.Context, *upstream.UpStream) *processor
 
 	enableNewScheduler bool
 
@@ -81,6 +83,11 @@ func (m *Manager) Tick(stdCtx context.Context, state orchestrator.ReactorState) 
 		return state, err
 	}
 
+	for key, info := range globalState.Upstreams {
+		if err := upstream.UpStreamManager.TryInit(key, info); err != nil {
+			return nil, errors.Trace(err)
+		}
+	}
 	captureID := ctx.GlobalVars().CaptureInfo.ID
 	var inactiveChangefeedCount int
 	for changefeedID, changefeedState := range globalState.Changefeeds {
@@ -97,7 +104,11 @@ func (m *Manager) Tick(stdCtx context.Context, state orchestrator.ReactorState) 
 		if !exist {
 			if m.enableNewScheduler {
 				failpoint.Inject("processorManagerHandleNewChangefeedDelay", nil)
-				processor = m.newProcessor(ctx)
+				upStream, err := upstream.UpStreamManager.Get(changefeedState.Info.UpstreamID)
+				if err != nil {
+					return state, err
+				}
+				processor = m.newProcessor(ctx, upStream)
 				m.processors[changefeedID] = processor
 			} else {
 				if changefeedState.Status.AdminJobType.IsStopState() || changefeedState.TaskStatuses[captureID].AdminJobType.IsStopState() {
@@ -109,7 +120,11 @@ func (m *Manager) Tick(stdCtx context.Context, state orchestrator.ReactorState) 
 					continue
 				}
 				failpoint.Inject("processorManagerHandleNewChangefeedDelay", nil)
-				processor = m.newProcessor(ctx)
+				upStream, err := upstream.UpStreamManager.Get(changefeedState.Info.UpstreamID)
+				if err != nil {
+					return state, err
+				}
+				processor = m.newProcessor(ctx, upStream)
 				m.processors[changefeedID] = processor
 			}
 		}
@@ -139,13 +154,13 @@ func (m *Manager) closeProcessor(changefeedID model.ChangeFeedID) {
 		err := processor.Close()
 		costTime := time.Since(startTime)
 		if costTime > processorLogsWarnDuration {
-			log.Warn("processor close took too long", zap.String("changefeed", changefeedID),
+			log.Warn("processor close took too long", zap.String("changefeed", changefeedID.String()),
 				zap.String("capture", captureID), zap.Duration("duration", costTime))
 		}
 		m.metricProcessorCloseDuration.Observe(costTime.Seconds())
 		if err != nil {
 			log.Warn("failed to close processor",
-				zap.String("changefeed", changefeedID),
+				zap.String("changefeed", changefeedID.String()),
 				zap.Error(err))
 		}
 		delete(m.processors, changefeedID)

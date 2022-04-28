@@ -14,19 +14,14 @@
 package cli
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/pingcap/tiflow/pkg/etcd"
 
-	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/model"
-	cmdcontext "github.com/pingcap/tiflow/pkg/cmd/context"
 	"github.com/pingcap/tiflow/pkg/cmd/factory"
-	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/security"
-	"github.com/r3labs/diff"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"go.uber.org/zap"
@@ -77,65 +72,65 @@ func (o *updateChangefeedOptions) complete(f factory.Factory) error {
 
 // run the `cli changefeed update` command.
 func (o *updateChangefeedOptions) run(cmd *cobra.Command) error {
-	ctx := cmdcontext.GetDefaultContext()
-
-	resp, err := sendOwnerChangefeedQuery(ctx, o.etcdClient, o.changefeedID, o.credential)
-	// if no cdc owner exists, allow user to update changefeed config
-	if err != nil && errors.Cause(err) != cerror.ErrOwnerNotFound {
-		return err
-	}
-	// Note that the correctness of the logic here depends on the return value of `/capture/owner/changefeed/query` interface.
-	// TODO: Using error codes instead of string containing judgments
-	if err == nil && !strings.Contains(resp, `"state": "stopped"`) {
-		return errors.Errorf("can only update changefeed config when it is stopped\nstatus: %s", resp)
-	}
-
-	old, err := o.etcdClient.GetChangeFeedInfo(ctx, o.changefeedID)
-	if err != nil {
-		return err
-	}
-
-	newInfo, err := o.applyChanges(old, cmd)
-	if err != nil {
-		return err
-	}
-
-	changelog, err := diff.Diff(old, newInfo)
-	if err != nil {
-		return err
-	}
-	if len(changelog) == 0 {
-		cmd.Printf("changefeed config is the same with the old one, do nothing\n")
-		return nil
-	}
-	cmd.Printf("Diff of changefeed config:\n")
-	for _, change := range changelog {
-		cmd.Printf("%+v\n", change)
-	}
-
-	if !o.commonChangefeedOptions.noConfirm {
-		cmd.Printf("Could you agree to apply changes above to changefeed [Y/N]\n")
-		var yOrN string
-		_, err = fmt.Scan(&yOrN)
-		if err != nil {
-			return err
-		}
-		if strings.ToLower(strings.TrimSpace(yOrN)) != "y" {
-			cmd.Printf("No update to changefeed.\n")
-			return nil
-		}
-	}
-
-	err = o.etcdClient.SaveChangeFeedInfo(ctx, newInfo, o.changefeedID)
-	if err != nil {
-		return err
-	}
-	infoStr, err := newInfo.Marshal()
-	if err != nil {
-		return err
-	}
-	cmd.Printf("Update changefeed config successfully! "+
-		"\nID: %s\nInfo: %s\n", o.changefeedID, infoStr)
+	//ctx := cmdcontext.GetDefaultContext()
+	//
+	//resp, err := sendOwnerChangefeedQuery(ctx, o.etcdClient, o.changefeedID, o.credential)
+	//// if no cdc owner exists, allow user to update changefeed config
+	//if err != nil && errors.Cause(err) != cerror.ErrOwnerNotFound {
+	//	return err
+	//}
+	//// Note that the correctness of the logic here depends on the return value of `/capture/owner/changefeed/query` interface.
+	//// TODO: Using error codes instead of string containing judgments
+	//if err == nil && !strings.Contains(resp, `"state": "stopped"`) {
+	//	return errors.Errorf("can only update changefeed config when it is stopped\nstatus: %s", resp)
+	//}
+	//
+	//old, err := o.etcdClient.GetChangeFeedInfo(ctx, o.changefeedID)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//newInfo, err := o.applyChanges(old, cmd)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//changelog, err := diff.Diff(old, newInfo)
+	//if err != nil {
+	//	return err
+	//}
+	//if len(changelog) == 0 {
+	//	cmd.Printf("changefeed config is the same with the old one, do nothing\n")
+	//	return nil
+	//}
+	//cmd.Printf("Diff of changefeed config:\n")
+	//for _, change := range changelog {
+	//	cmd.Printf("%+v\n", change)
+	//}
+	//
+	//if !o.commonChangefeedOptions.noConfirm {
+	//	cmd.Printf("Could you agree to apply changes above to changefeed [Y/N]\n")
+	//	var yOrN string
+	//	_, err = fmt.Scan(&yOrN)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	if strings.ToLower(strings.TrimSpace(yOrN)) != "y" {
+	//		cmd.Printf("No update to changefeed.\n")
+	//		return nil
+	//	}
+	//}
+	//
+	//err = o.etcdClient.SaveChangeFeedInfo(ctx, newInfo, o.changefeedID)
+	//if err != nil {
+	//	return err
+	//}
+	//infoStr, err := newInfo.Marshal()
+	//if err != nil {
+	//	return err
+	//}
+	//cmd.Printf("Update changefeed config successfully! "+
+	//	"\nID: %s\nInfo: %s\n", o.changefeedID, infoStr)
 
 	return nil
 }

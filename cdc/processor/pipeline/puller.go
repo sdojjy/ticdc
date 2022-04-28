@@ -17,12 +17,14 @@ import (
 	"context"
 
 	"github.com/pingcap/errors"
+	"github.com/pingcap/tiflow/cdc/contextutil"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/puller"
 	cdcContext "github.com/pingcap/tiflow/pkg/context"
 	"github.com/pingcap/tiflow/pkg/pipeline"
 	pmessage "github.com/pingcap/tiflow/pkg/pipeline/message"
 	"github.com/pingcap/tiflow/pkg/regionspan"
+	"github.com/pingcap/tiflow/pkg/upstream"
 	"github.com/pingcap/tiflow/pkg/util"
 	"golang.org/x/sync/errgroup"
 )
@@ -62,25 +64,25 @@ func (n *pullerNode) tableSpan(ctx cdcContext.Context) []regionspan.Span {
 }
 
 func (n *pullerNode) Init(ctx pipeline.NodeContext) error {
-	return n.start(ctx, new(errgroup.Group), false, nil)
+	return n.start(ctx, nil, new(errgroup.Group), false, nil)
 }
 
-func (n *pullerNode) start(ctx pipeline.NodeContext, wg *errgroup.Group, isActorMode bool, sorter *sorterNode) error {
+func (n *pullerNode) start(ctx pipeline.NodeContext, upStream *upstream.UpStream, wg *errgroup.Group, isActorMode bool, sorter *sorterNode) error {
 	n.wg = wg
 	ctxC, cancel := context.WithCancel(ctx)
-	ctxC = util.PutTableInfoInCtx(ctxC, n.tableID, n.tableName)
-	ctxC = util.PutCaptureAddrInCtx(ctxC, ctx.GlobalVars().CaptureInfo.AdvertiseAddr)
-	ctxC = util.PutChangefeedIDInCtx(ctxC, ctx.ChangefeedVars().ID)
-	ctxC = util.PutRoleInCtx(ctxC, util.RoleProcessor)
+	ctxC = contextutil.PutTableInfoInCtx(ctxC, n.tableID, n.tableName)
+	ctxC = contextutil.PutCaptureAddrInCtx(ctxC, ctx.GlobalVars().CaptureInfo.AdvertiseAddr)
+	ctxC = contextutil.PutChangefeedIDInCtx(ctxC, ctx.ChangefeedVars().ID)
+	ctxC = contextutil.PutRoleInCtx(ctxC, util.RoleProcessor)
 	// NOTICE: always pull the old value internally
 	// See also: https://github.com/pingcap/tiflow/issues/2301.
 	plr := puller.NewPuller(
 		ctxC,
-		ctx.GlobalVars().PDClient,
-		ctx.GlobalVars().GrpcPool,
-		ctx.GlobalVars().RegionCache,
-		ctx.GlobalVars().KVStorage,
-		ctx.GlobalVars().PDClock,
+		upStream.PDClient,
+		upStream.GrpcPool,
+		upStream.RegionCache,
+		upStream.KVStorage,
+		upStream.PDClock,
 		n.changefeed,
 		n.replicaInfo.StartTs, n.tableSpan(ctx), true)
 	n.wg.Go(func() error {

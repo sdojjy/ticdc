@@ -15,6 +15,7 @@ package owner
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"math"
 	"sync"
@@ -29,7 +30,7 @@ import (
 	cdcContext "github.com/pingcap/tiflow/pkg/context"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/orchestrator"
-	"github.com/pingcap/tiflow/pkg/txnutil/gc"
+	"github.com/pingcap/tiflow/pkg/upstream"
 	"github.com/pingcap/tiflow/pkg/version"
 	pd "github.com/tikv/pd/client"
 	"go.uber.org/zap"
@@ -90,10 +91,10 @@ type Owner interface {
 }
 
 type ownerImpl struct {
+	// 从 clusterID 映射到 changefeeds map
+	// changefeeds map[uint64]map[model.ChangeFeedID]*changefeed
 	changefeeds map[model.ChangeFeedID]*changefeed
 	captures    map[model.CaptureID]*model.CaptureInfo
-
-	gcManager gc.Manager
 
 	ownerJobQueue struct {
 		sync.Mutex
@@ -109,14 +110,14 @@ type ownerImpl struct {
 	//         as it is not a thread-safe value.
 	bootstrapped bool
 
-	newChangefeed func(id model.ChangeFeedID, gcManager gc.Manager) *changefeed
+	newChangefeed func(id model.ChangeFeedID, upStream *upstream.UpStream) *changefeed
 }
 
 // NewOwner creates a new Owner
-func NewOwner(pdClient pd.Client) Owner {
+func NewOwner() Owner {
 	return &ownerImpl{
-		changefeeds:   make(map[model.ChangeFeedID]*changefeed),
-		gcManager:     gc.NewManager(pdClient),
+		changefeeds: make(map[model.ChangeFeedID]*changefeed),
+		// gcManager:     gc.NewManager(pdClient),
 		lastTickTime:  time.Now(),
 		newChangefeed: newChangefeed,
 		logLimiter:    rate.NewLimiter(versionInconsistentLogRate, versionInconsistentLogRate),
@@ -125,15 +126,15 @@ func NewOwner(pdClient pd.Client) Owner {
 
 // NewOwner4Test creates a new Owner for test
 func NewOwner4Test(
-	newDDLPuller func(ctx cdcContext.Context, startTs uint64) (DDLPuller, error),
+	newDDLPuller func(ctx cdcContext.Context, upStream *upstream.UpStream, startTs uint64) (DDLPuller, error),
 	newSink func() DDLSink,
 	pdClient pd.Client,
 ) Owner {
-	o := NewOwner(pdClient).(*ownerImpl)
+	o := NewOwner().(*ownerImpl)
 	// Most tests do not need to test bootstrap.
 	o.bootstrapped = true
-	o.newChangefeed = func(id model.ChangeFeedID, gcManager gc.Manager) *changefeed {
-		return newChangefeed4Test(id, gcManager, newDDLPuller, newSink)
+	o.newChangefeed = func(id model.ChangeFeedID, upStream *upstream.UpStream) *changefeed {
+		return newChangefeed4Test(id, upStream, newDDLPuller, newSink)
 	}
 	return o
 }
@@ -165,6 +166,13 @@ func (o *ownerImpl) Tick(stdCtx context.Context, rawState orchestrator.ReactorSt
 	if !o.clusterVersionConsistent(state.Captures) {
 		return state, nil
 	}
+
+	for key, info := range state.Upstreams {
+		if err := upstream.UpStreamManager.TryInit(key, info); err != nil {
+			return nil, errors.Trace(err)
+		}
+	}
+
 	// Owner should update GC safepoint before initializing changefeed, so
 	// changefeed can remove its "ticdc-creating" service GC safepoint during
 	// initializing.
@@ -190,7 +198,12 @@ func (o *ownerImpl) Tick(stdCtx context.Context, rawState orchestrator.ReactorSt
 		})
 		cfReactor, exist := o.changefeeds[changefeedID]
 		if !exist {
-			cfReactor = o.newChangefeed(changefeedID, o.gcManager)
+			// 需要获取 clusterID 来划分 changefeed 所属集群
+			upStream, err := upstream.UpStreamManager.Get(changefeedState.Info.UpstreamID)
+			if err != nil {
+				return state, errors.Trace(err)
+			}
+			cfReactor = o.newChangefeed(changefeedID, upStream)
 			o.changefeeds[changefeedID] = cfReactor
 		}
 		cfReactor.Tick(ctx, changefeedState, state.Captures)
@@ -220,6 +233,7 @@ func (o *ownerImpl) Tick(stdCtx context.Context, rawState orchestrator.ReactorSt
 		}
 		return state, cerror.ErrReactorFinished.GenWithStackByArgs()
 	}
+
 	return state, nil
 }
 
@@ -356,7 +370,7 @@ func (o *ownerImpl) updateMetrics(state *orchestrator.GlobalReactorState) {
 	if conf.Debug != nil && conf.Debug.EnableNewScheduler {
 		for cfID, cf := range o.changefeeds {
 			if cf.state != nil && cf.state.Info != nil {
-				changefeedStatusGauge.WithLabelValues(cfID).Set(float64(cf.state.Info.State.ToInt()))
+				changefeedStatusGauge.WithLabelValues(cfID.String()).Set(float64(cf.state.Info.State.ToInt()))
 			}
 
 			// The InfoProvider is a proxy object returning information
@@ -372,10 +386,10 @@ func (o *ownerImpl) updateMetrics(state *orchestrator.GlobalReactorState) {
 
 			for captureID, info := range o.captures {
 				ownerMaintainTableNumGauge.
-					WithLabelValues(cfID, info.AdvertiseAddr, maintainTableTypeTotal).
+					WithLabelValues(cfID.String(), info.AdvertiseAddr, maintainTableTypeTotal).
 					Set(float64(totalCounts[captureID]))
 				ownerMaintainTableNumGauge.
-					WithLabelValues(cfID, info.AdvertiseAddr, maintainTableTypeWip).
+					WithLabelValues(cfID.String(), info.AdvertiseAddr, maintainTableTypeWip).
 					Set(float64(pendingCounts[captureID]))
 			}
 		}
@@ -389,13 +403,13 @@ func (o *ownerImpl) updateMetrics(state *orchestrator.GlobalReactorState) {
 				continue
 			}
 			ownerMaintainTableNumGauge.
-				WithLabelValues(changefeedID, captureInfo.AdvertiseAddr, maintainTableTypeTotal).
+				WithLabelValues(changefeedID.String(), captureInfo.AdvertiseAddr, maintainTableTypeTotal).
 				Set(float64(len(taskStatus.Tables)))
 			ownerMaintainTableNumGauge.
-				WithLabelValues(changefeedID, captureInfo.AdvertiseAddr, maintainTableTypeWip).
+				WithLabelValues(changefeedID.String(), captureInfo.AdvertiseAddr, maintainTableTypeWip).
 				Set(float64(len(taskStatus.Operation)))
 			if changefeedState.Info != nil {
-				changefeedStatusGauge.WithLabelValues(changefeedID).Set(float64(changefeedState.Info.State.ToInt()))
+				changefeedStatusGauge.WithLabelValues(changefeedID.String()).Set(float64(changefeedState.Info.State.ToInt()))
 			}
 		}
 	}
@@ -567,11 +581,12 @@ func (o *ownerImpl) pushOwnerJob(job *ownerJob) {
 	o.ownerJobQueue.queue = append(o.ownerJobQueue.queue, job)
 }
 
+// 这个函数的逻辑需要修改，owner 应该分别遍历不同上游的 changefeed，然后再计算
 func (o *ownerImpl) updateGCSafepoint(
 	ctx context.Context, state *orchestrator.GlobalReactorState,
 ) error {
-	forceUpdate := false
-	minCheckpointTs := uint64(math.MaxUint64)
+	minCheckpointTsMap := make(map[string]uint64)
+	forceUpdateMap := make(map[string]bool)
 	for changefeedID, changefeedState := range state.Changefeeds {
 		if changefeedState.Info == nil {
 			continue
@@ -582,21 +597,42 @@ func (o *ownerImpl) updateGCSafepoint(
 			continue
 		}
 		checkpointTs := changefeedState.Info.GetCheckpointTs(changefeedState.Status)
+		minCheckpointTs, ok := minCheckpointTsMap[changefeedState.Info.UpstreamID]
+		if !ok {
+			minCheckpointTs = uint64(math.MaxUint64)
+		}
 		if minCheckpointTs > checkpointTs {
 			minCheckpointTs = checkpointTs
 		}
+		minCheckpointTsMap[changefeedState.Info.UpstreamID] = minCheckpointTs
 		// Force update when adding a new changefeed.
 		_, exist := o.changefeeds[changefeedID]
 		if !exist {
-			forceUpdate = true
+			forceUpdateMap[changefeedState.Info.UpstreamID] = true
 		}
 	}
-	// When the changefeed starts up, CDC will do a snapshot read at
-	// (checkpointTs - 1) from TiKV, so (checkpointTs - 1) should be an upper
-	// bound for the GC safepoint.
-	gcSafepointUpperBound := minCheckpointTs - 1
-	err := o.gcManager.TryUpdateGCSafePoint(ctx, gcSafepointUpperBound, forceUpdate)
-	return errors.Trace(err)
+	for id, minCheckpointTs := range minCheckpointTsMap {
+		// 此处逻辑需要修改, 需要根据上游的不同来更新 safePoint
+		upStream, err := upstream.UpStreamManager.Get(id)
+		if err != nil {
+			return errors.Trace(err)
+		}
+		if upStream == nil {
+			log.Panic("upStream is nil")
+		}
+		if !upStream.IsInitialized() {
+			log.Panic("upStream not initialized")
+		}
+		if upStream.GCManager == nil {
+			log.Panic("gcManager is nil")
+		}
+		// When the changefeed starts up, CDC will do a snapshot read at
+		// (checkpointTs - 1) from TiKV, so (checkpointTs - 1) should be an upper
+		// bound for the GC safepoint.
+		gcSafepointUpperBound := minCheckpointTs - 1
+		err = upStream.GCManager.TryUpdateGCSafePoint(ctx, fmt.Sprintf("%s-%s", config.GetGlobalServerConfig().ClusterID, id), gcSafepointUpperBound, forceUpdateMap[id])
+	}
+	return nil
 }
 
 // StatusProvider returns a StatusProvider

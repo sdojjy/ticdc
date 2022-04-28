@@ -15,6 +15,7 @@ package model
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/url"
 	"regexp"
@@ -32,7 +33,21 @@ import (
 )
 
 // ChangeFeedID is the type for change feed ID
-type ChangeFeedID = string
+type ChangeFeedID struct {
+	Namespace string `json:"namespace"`
+	ID        string `json:"id"`
+}
+
+func NewDefaultChangefeedID(id string) ChangeFeedID {
+	return ChangeFeedID{
+		Namespace: "default",
+		ID:        id,
+	}
+}
+
+func (c ChangeFeedID) String() string {
+	return fmt.Sprintf("%s-%s", c.Namespace, c.ID)
+}
 
 // SortEngine is the sorter engine
 type SortEngine = string
@@ -119,6 +134,8 @@ type ChangeFeedInfo struct {
 	SyncPointEnabled  bool          `json:"sync-point-enabled"`
 	SyncPointInterval time.Duration `json:"sync-point-interval"`
 	CreatorVersion    string        `json:"creator-version"`
+
+	UpstreamID string `json:"upstream-id"`
 }
 
 const changeFeedIDMaxLen = 128

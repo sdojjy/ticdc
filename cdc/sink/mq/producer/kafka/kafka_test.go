@@ -23,6 +23,7 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/pingcap/check"
 	"github.com/pingcap/errors"
+	"github.com/pingcap/tiflow/cdc/ctx"
 	"github.com/pingcap/tiflow/cdc/sink/codec"
 	"github.com/pingcap/tiflow/pkg/kafka"
 	"github.com/pingcap/tiflow/pkg/util"
@@ -96,7 +97,7 @@ func TestNewSaramaProducer(t *testing.T) {
 		NewAdminClientImpl = kafka.NewSaramaAdminClient
 	}()
 
-	ctx = util.PutRoleInCtx(ctx, util.RoleTester)
+	ctx = ctx.PutRoleInCtx(ctx, util.RoleTester)
 	saramaConfig, err := NewSaramaConfig(ctx, config)
 	require.Nil(t, err)
 	saramaConfig.Producer.Flush.MaxMessages = 1
@@ -359,7 +360,7 @@ func TestProducerSendMessageFailed(t *testing.T) {
 	}()
 
 	errCh := make(chan error, 1)
-	ctx = util.PutRoleInCtx(ctx, util.RoleTester)
+	ctx = ctx.PutRoleInCtx(ctx, util.RoleTester)
 	saramaConfig, err := NewSaramaConfig(context.Background(), config)
 	require.Nil(t, err)
 	saramaConfig.Producer.Flush.MaxMessages = 1
@@ -443,7 +444,7 @@ func TestProducerDoubleClose(t *testing.T) {
 	}()
 
 	errCh := make(chan error, 1)
-	ctx = util.PutRoleInCtx(ctx, util.RoleTester)
+	ctx = ctx.PutRoleInCtx(ctx, util.RoleTester)
 	saramaConfig, err := NewSaramaConfig(context.Background(), config)
 	require.Nil(t, err)
 	client, err := sarama.NewClient(config.BrokerEndpoints, saramaConfig)

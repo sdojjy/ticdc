@@ -15,6 +15,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
+	ctx2 "github.com/pingcap/tiflow/cdc/contextutil"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/sink"
 	cmdcontext "github.com/pingcap/tiflow/pkg/cmd/context"
@@ -57,6 +59,8 @@ type changefeedCommonOptions struct {
 	cyclicSyncDDL          bool
 	syncPointEnabled       bool
 	syncPointInterval      time.Duration
+	clusterID              string
+	namespace              string
 }
 
 // newChangefeedCommonOptions creates new changefeed common options.
@@ -83,6 +87,8 @@ func (o *changefeedCommonOptions) addFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().BoolVar(&o.cyclicSyncDDL, "cyclic-sync-ddl", true, "(Experimental) Cyclic replication sync DDL of changefeed")
 	cmd.PersistentFlags().BoolVar(&o.syncPointEnabled, "sync-point", false, "(Experimental) Set and Record syncpoint in replication(default off)")
 	cmd.PersistentFlags().DurationVar(&o.syncPointInterval, "sync-interval", 10*time.Minute, "(Experimental) Set the interval for syncpoint in replication(default 10min)")
+	cmd.PersistentFlags().StringVar(&o.namespace, "namespace", "default", "changefeed namespace")
+	cmd.PersistentFlags().StringVar(&o.clusterID, "cluster-id", "default", "ticdc cluster id ")
 	_ = cmd.PersistentFlags().MarkHidden("sort-dir")
 }
 
@@ -363,7 +369,7 @@ func (o *createChangefeedOptions) validateStartTs(ctx context.Context) error {
 	// Ensure the start ts is validate in the next 1 hour.
 	const ensureTTL = 60 * 60.
 	return gc.EnsureChangefeedStartTsSafety(
-		ctx, o.pdClient, o.changefeedID, ensureTTL, o.startTs)
+		ctx, o.pdClient, model.ChangeFeedID{o.commonChangefeedOptions.namespace, o.changefeedID}, ensureTTL, o.startTs)
 }
 
 // validateTargetTs checks if targetTs is a valid value.
@@ -432,18 +438,29 @@ func (o *createChangefeedOptions) run(ctx context.Context, cmd *cobra.Command) e
 		return errors.Annotate(err, "can not load timezone, Please specify the time zone through environment variable `TZ` or command line parameters `--tz`")
 	}
 
-	ctx = ticdcutil.PutTimezoneInCtx(ctx, tz)
+	ctx = ctx2.PutTimezoneInCtx(ctx, tz)
 	err = o.validateSink(ctx, info.Config, info.Opts)
 	if err != nil {
 		return err
 	}
 
+	info.UpstreamID = fmt.Sprintf("%d", o.pdClient.GetClusterID(ctx))
 	infoStr, err := info.Marshal()
 	if err != nil {
 		return err
 	}
 
-	err = o.etcdClient.CreateChangefeedInfo(ctx, info, id)
+	upstreamInfo := &model.UpstreamInfo{
+		PD:       o.pdAddr,
+		KeyPath:  o.credential.KeyPath,
+		CAPath:   o.credential.CAPath,
+		CertPath: o.credential.CertPath,
+	}
+	err = o.etcdClient.CreateChangefeedInfo(ctx, o.commonChangefeedOptions.clusterID, upstreamInfo, info,
+		model.ChangeFeedID{
+			Namespace: o.commonChangefeedOptions.namespace,
+			ID:        o.changefeedID,
+		})
 	if err != nil {
 		return err
 	}
@@ -471,6 +488,7 @@ func newCmdCreateChangefeed(f factory.Factory) *cobra.Command {
 				return err
 			}
 
+			config.GetGlobalServerConfig().ClusterID = o.commonChangefeedOptions.clusterID
 			err = o.validate(ctx, cmd)
 			if err != nil {
 				return err

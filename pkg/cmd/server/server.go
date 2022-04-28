@@ -24,6 +24,7 @@ import (
 	"github.com/pingcap/log"
 	ticonfig "github.com/pingcap/tidb/config"
 	"github.com/pingcap/tiflow/cdc"
+	ctx2 "github.com/pingcap/tiflow/cdc/contextutil"
 	"github.com/pingcap/tiflow/cdc/sorter/unified"
 	cmdcontext "github.com/pingcap/tiflow/pkg/cmd/context"
 	"github.com/pingcap/tiflow/pkg/cmd/util"
@@ -61,6 +62,7 @@ func newOptions() *options {
 // addFlags receives a *cobra.Command reference and binds
 // flags related to template printing to it.
 func (o *options) addFlags(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&o.serverConfig.ClusterID, "cluster-id", "default", "ticdc cluster id")
 	cmd.Flags().StringVar(&o.serverConfig.Addr, "addr", o.serverConfig.Addr, "Set the listening address")
 	cmd.Flags().StringVar(&o.serverConfig.AdvertiseAddr, "advertise-addr", o.serverConfig.AdvertiseAddr, "Set the advertise listening address for client communication")
 
@@ -125,9 +127,13 @@ func (o *options) run(cmd *cobra.Command) error {
 		return errors.Annotate(err, "can not load timezone, Please specify the time zone through environment variable `TZ` or command line parameters `--tz`")
 	}
 
+	// ticdc 开启支持多上游
+	o.serverConfig.Debug.ServerPdAddr = o.serverPdAddr
+	o.serverConfig.Debug.EnableMultiUpStream = true
+
 	config.StoreGlobalServerConfig(o.serverConfig)
-	ctx := ticdcutil.PutTimezoneInCtx(cmdcontext.GetDefaultContext(), tz)
-	ctx = ticdcutil.PutCaptureAddrInCtx(ctx, o.serverConfig.AdvertiseAddr)
+	ctx := ctx2.PutTimezoneInCtx(cmdcontext.GetDefaultContext(), tz)
+	ctx = ctx2.PutCaptureAddrInCtx(ctx, o.serverConfig.AdvertiseAddr)
 
 	version.LogVersionInfo()
 	if ticdcutil.FailpointBuild {
@@ -226,6 +232,8 @@ func (o *options) complete(cmd *cobra.Command) error {
 					"sort-dir will be set to `{data-dir}/tmp/sorter`. The sort-dir here will be no-op\n"))
 			}
 			cfg.Sorter.SortDir = config.DefaultSortDir
+		case "cluster-id":
+			cfg.ClusterID = o.serverConfig.ClusterID
 		case "pd", "config":
 			// do nothing
 		default:

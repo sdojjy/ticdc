@@ -21,6 +21,7 @@ import (
 	"github.com/pingcap/log"
 	tidbkv "github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tiflow/cdc/capture"
+	"github.com/pingcap/tiflow/cdc/contextutil"
 	"github.com/pingcap/tiflow/cdc/entry/schema"
 	"github.com/pingcap/tiflow/cdc/kv"
 	"github.com/pingcap/tiflow/cdc/model"
@@ -28,7 +29,7 @@ import (
 	"github.com/pingcap/tiflow/pkg/config"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/filter"
-	"github.com/pingcap/tiflow/pkg/txnutil/gc"
+	"github.com/pingcap/tiflow/pkg/upstream"
 	"github.com/pingcap/tiflow/pkg/util"
 	"github.com/pingcap/tiflow/pkg/version"
 	"github.com/r3labs/diff"
@@ -41,6 +42,13 @@ func verifyCreateChangefeedConfig(
 	changefeedConfig model.ChangefeedConfig,
 	capture *capture.Capture,
 ) (*model.ChangeFeedInfo, error) {
+	upStream, err := upstream.UpStreamManager.Get("")
+	defer upstream.UpStreamManager.Release(0)
+
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+
 	// verify sinkURI
 	if changefeedConfig.SinkURI == "" {
 		return nil, cerror.ErrSinkURIInvalid.GenWithStackByArgs("sink-uri is empty, can't not create a changefeed without sink-uri")
@@ -51,17 +59,17 @@ func verifyCreateChangefeedConfig(
 		return nil, cerror.ErrAPIInvalidParam.GenWithStack("invalid changefeed_id: %s", changefeedConfig.ID)
 	}
 	// check if the changefeed exists
-	cfStatus, err := capture.StatusProvider().GetChangeFeedStatus(ctx, changefeedConfig.ID)
-	if err != nil && cerror.ErrChangeFeedNotExists.NotEqual(err) {
-		return nil, err
-	}
-	if cfStatus != nil {
-		return nil, cerror.ErrChangeFeedAlreadyExists.GenWithStackByArgs(changefeedConfig.ID)
-	}
+	//cfStatus, err := capture.StatusProvider().GetChangeFeedStatus(ctx, changefeedConfig.ID)
+	//if err != nil && cerror.ErrChangeFeedNotExists.NotEqual(err) {
+	//	return nil, err
+	//}
+	//if cfStatus != nil {
+	//	return nil, cerror.ErrChangeFeedAlreadyExists.GenWithStackByArgs(changefeedConfig.ID)
+	//}
 
 	// verify start-ts
 	if changefeedConfig.StartTS == 0 {
-		ts, logical, err := capture.PDClient.GetTS(ctx)
+		ts, logical, err := upStream.PDClient.GetTS(ctx)
 		if err != nil {
 			return nil, cerror.ErrPDEtcdAPIError.GenWithStackByArgs("fail to get ts from pd client")
 		}
@@ -70,13 +78,13 @@ func verifyCreateChangefeedConfig(
 
 	// Ensure the start ts is valid in the next 1 hour.
 	const ensureTTL = 60 * 60
-	if err := gc.EnsureChangefeedStartTsSafety(
-		ctx, capture.PDClient, changefeedConfig.ID, ensureTTL, changefeedConfig.StartTS); err != nil {
-		if !cerror.ErrStartTsBeforeGC.Equal(err) {
-			return nil, cerror.ErrPDEtcdAPIError.Wrap(err)
-		}
-		return nil, err
-	}
+	//if err := gc.EnsureChangefeedStartTsSafety(
+	//	ctx, upStream.PDClient, changefeedConfig.ID, ensureTTL, changefeedConfig.StartTS); err != nil {
+	//	if !cerror.ErrStartTsBeforeGC.Equal(err) {
+	//		return nil, cerror.ErrPDEtcdAPIError.Wrap(err)
+	//	}
+	//	return nil, err
+	//}
 
 	// verify target-ts
 	if changefeedConfig.TargetTS > 0 && changefeedConfig.TargetTS <= changefeedConfig.StartTS {
@@ -133,7 +141,7 @@ func verifyCreateChangefeedConfig(
 	}
 
 	if !replicaConfig.ForceReplicate && !changefeedConfig.IgnoreIneligibleTable {
-		ineligibleTables, _, err := VerifyTables(replicaConfig, capture.Storage, changefeedConfig.StartTS)
+		ineligibleTables, _, err := VerifyTables(replicaConfig, upStream.KVStorage, changefeedConfig.StartTS)
 		if err != nil {
 			return nil, err
 		}
@@ -146,7 +154,7 @@ func verifyCreateChangefeedConfig(
 	if err != nil {
 		return nil, cerror.ErrAPIInvalidParam.Wrap(errors.Annotatef(err, "invalid timezone:%s", changefeedConfig.TimeZone))
 	}
-	ctx = util.PutTimezoneInCtx(ctx, tz)
+	ctx = contextutil.PutTimezoneInCtx(ctx, tz)
 	if err := sink.Validate(ctx, info.SinkURI, info.Config, info.Opts); err != nil {
 		return nil, err
 	}
