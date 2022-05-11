@@ -136,6 +136,7 @@ func (worker *EtcdWorker) Run(ctx context.Context, session *concurrency.Session,
 
 	if role == "processor" {
 		delayer := NewChannelDelayer(time.Second*3, watchCh, 1024, 16)
+		log.Info("delay etcd message")
 		watchCh = delayer.Out()
 		defer delayer.Close()
 	}
