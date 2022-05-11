@@ -134,6 +134,12 @@ func (worker *EtcdWorker) Run(ctx context.Context, session *concurrency.Session,
 	defer cancel()
 	watchCh := worker.client.Watch(watchCtx, worker.prefix.String(), role, clientv3.WithPrefix(), clientv3.WithRev(worker.revision+1))
 
+	if role == "processor" {
+		delayer := NewChannelDelayer(time.Second*3, watchCh, 1024, 16)
+		watchCh = delayer.Out()
+		defer delayer.Close()
+	}
+
 	var (
 		pendingPatches [][]DataPatch
 		exiting        bool
