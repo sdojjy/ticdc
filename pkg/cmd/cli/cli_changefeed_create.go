@@ -332,6 +332,11 @@ func (o *createChangefeedOptions) getInfo(cmd *cobra.Command) *model.ChangeFeedI
 		SyncPointEnabled:  o.commonChangefeedOptions.syncPointEnabled,
 		SyncPointInterval: o.commonChangefeedOptions.syncPointInterval,
 		CreatorVersion:    version.ReleaseVersion,
+		PDEndpoints:       o.pdAddr,
+		CertPath:          o.credential.CertPath,
+		CAPath:            o.credential.CAPath,
+		KeyPath:           o.credential.KeyPath,
+		CertAllowedCN:     o.credential.CertAllowedCN,
 	}
 
 	if info.Engine == model.SortInFile {
@@ -444,6 +449,8 @@ func (o *createChangefeedOptions) run(ctx context.Context, cmd *cobra.Command) e
 	if err != nil {
 		return err
 	}
+	// set the upstream tidb cluster id
+	info.UpstreamID = o.pdClient.GetClusterID(ctx)
 
 	infoStr, err := info.Marshal()
 	if err != nil {

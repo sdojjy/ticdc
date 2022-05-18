@@ -42,6 +42,14 @@ type Manager struct {
 	mu sync.Mutex
 }
 
+// UpstreamKey is the key of Manager's ups map
+type UpstreamKey struct {
+	ClusterID uint64
+	CAPath    string
+	CertPath  string
+	KeyPath   string
+}
+
 // NewManager creates a new Manager.
 // ctx will be used to initialize upstream spawned by this Manager.
 func NewManager(ctx context.Context, gcServiceID string) *Manager {
@@ -83,8 +91,8 @@ func (m *Manager) Add(upstreamID uint64, pdEndpoints []string, securityConfig *c
 		return errors.Trace(err)
 	}
 	m.mu.Lock()
-	m.ups.Store(upstreamID, up)
-	m.mu.Unlock()
+	defer m.mu.Unlock()
+	m.ups.Store(up.PDClient.GetClusterID(m.ctx), up)
 	return nil
 }
 
