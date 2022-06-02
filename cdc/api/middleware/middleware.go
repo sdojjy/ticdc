@@ -24,6 +24,11 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	// ClientVersionHeader server use this header to check version compatible
+	ClientVersionHeader = "X-Client-Version"
+)
+
 // LogMiddleware logs the api requests
 func LogMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -71,5 +76,17 @@ func ErrorHandleMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+	}
+}
+
+// ClientVersionCheckMiddleware checks client version
+func ClientVersionCheckMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		version := c.GetHeader(ClientVersionHeader)
+		if version != "" {
+			//check version
+			c.Next()
+		}
+		c.Next()
 	}
 }

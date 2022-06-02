@@ -26,10 +26,12 @@ import (
 	"time"
 
 	"github.com/pingcap/log"
+	"github.com/pingcap/tiflow/cdc/api/middleware"
 	"github.com/pingcap/tiflow/cdc/model"
 	cerrors "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/httputil"
 	"github.com/pingcap/tiflow/pkg/retry"
+	"github.com/pingcap/tiflow/pkg/version"
 	"go.uber.org/zap"
 )
 
@@ -288,6 +290,7 @@ func (r *Request) Do(ctx context.Context) (res *Result) {
 
 	fn := func() error {
 		req, err := r.newHTTPRequest(ctx)
+		req.Header.Add(middleware.ClientVersionHeader, version.ReleaseVersion)
 		if err != nil {
 			return err
 		}
