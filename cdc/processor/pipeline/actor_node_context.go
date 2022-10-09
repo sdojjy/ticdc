@@ -27,7 +27,7 @@ import (
 )
 
 // defaultEventBatchSize specifies that if we get 32 pipeline events, a tick message is sent to the actor.
-const defaultEventBatchSize = uint32(32)
+const defaultEventBatchSize = uint32(1)
 
 // actorNodeContext implements the NodeContext interface, with this we do not need
 // to change too much logic to implement the table actor.

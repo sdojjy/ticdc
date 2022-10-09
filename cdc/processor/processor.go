@@ -97,7 +97,10 @@ type processor struct {
 	metricSchemaStorageGcTsGauge    prometheus.Gauge
 	metricProcessorErrorCounter     prometheus.Counter
 	metricProcessorTickDuration     prometheus.Observer
-	metricsTableSinkTotalRows       prometheus.Counter
+
+	metricsChangefeedCheckpointLagDuration prometheus.Observer
+
+	metricsTableSinkTotalRows prometheus.Counter
 
 	metricsTableMemoryHistogram prometheus.Observer
 	metricsProcessorMemoryGauge prometheus.Gauge
@@ -431,6 +434,8 @@ func newProcessor(
 			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
 		metricProcessorTickDuration: processorTickDuration.
 			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
+		metricsChangefeedCheckpointLagDuration: changefeedCheckpointLagDuration.
+			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
 		metricsTableSinkTotalRows: sinkmetric.TableSinkTotalRowsCountCounter.
 			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
 		metricsTableMemoryHistogram: tableMemoryHistogram.
@@ -568,7 +573,11 @@ func (p *processor) tick(ctx cdcContext.Context) error {
 	// it is no need to check the error here, because we will use
 	// local time when an error return, which is acceptable
 	pdTime, _ := p.upstream.PDClock.CurrentTime()
-
+	//pTime, _, err := p.upstream.PDClient.GetTS(ctx)
+	//if err != nil {
+	//	return nil
+	//}
+	//pdTime :=oracle.GetTimeFromTS(oracle.ComposeTS(pTime, 0))
 	p.handlePosition(oracle.GetPhysical(pdTime))
 	p.pushResolvedTs2Table()
 
@@ -885,6 +894,7 @@ func (p *processor) handlePosition(currentTs int64) {
 
 	resolvedPhyTs := oracle.ExtractPhysical(minResolvedTs)
 	p.metricResolvedTsLagGauge.Set(float64(currentTs-resolvedPhyTs) / 1e3)
+	p.metricsChangefeedCheckpointLagDuration.Observe(float64(currentTs-resolvedPhyTs) / 1e3)
 	p.metricResolvedTsGauge.Set(float64(resolvedPhyTs))
 	p.metricMinResolvedTableIDGauge.Set(float64(minResolvedTableID))
 

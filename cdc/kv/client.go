@@ -39,6 +39,7 @@ import (
 	"github.com/pingcap/tiflow/pkg/version"
 	"github.com/prometheus/client_golang/prometheus"
 	tidbkv "github.com/tikv/client-go/v2/kv"
+	"github.com/tikv/client-go/v2/oracle"
 	"github.com/tikv/client-go/v2/tikv"
 	pd "github.com/tikv/pd/client"
 	"go.uber.org/zap"
@@ -1143,6 +1144,8 @@ func (s *eventFeedSession) receiveFromStream(
 
 	metricSendEventBatchResolvedSize := batchResolvedEventSize.
 		WithLabelValues(s.changefeed.Namespace, s.changefeed.ID)
+	metricChangefeedResolvedLagGauge := changefeedResolvedTsLagGauge.
+		WithLabelValues(s.changefeed.Namespace, s.changefeed.ID)
 
 	// always create a new region worker, because `receiveFromStream` is ensured
 	// to call exactly once from outer code logic
@@ -1234,6 +1237,13 @@ func (s *eventFeedSession) receiveFromStream(
 		}
 		if cevent.ResolvedTs != nil {
 			metricSendEventBatchResolvedSize.Observe(float64(len(cevent.ResolvedTs.Regions)))
+			p, _, err := s.client.pd.GetTS(ctx)
+			if err == nil {
+				currentTs := oracle.GetTimeFromTS(oracle.ComposeTS(p, 0))
+				phyCkpTs := oracle.ExtractPhysical(cevent.ResolvedTs.Ts)
+				checkpointLag := float64(oracle.GetPhysical(currentTs)-phyCkpTs) / 1e3
+				metricChangefeedResolvedLagGauge.Observe(checkpointLag)
+			}
 			err = s.sendResolvedTs(ctx, cevent.ResolvedTs, worker, addr)
 			if err != nil {
 				return err

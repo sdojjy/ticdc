@@ -297,7 +297,7 @@ func (t *tableActor) start(sdtTableContext context.Context) error {
 	sorterNode := newSorterNode(t.tableName, t.tableID,
 		t.replicaInfo.StartTs, flowController,
 		t.mounter, &t.state, t.changefeedID, t.redoManager.Enabled(),
-		t.upstream.PDClient,
+		t.upstream.PDClient, t.upstream.PDClock,
 	)
 	t.sortNode = sorterNode
 	sortActorNodeContext := newContext(sdtTableContext, t.tableName,

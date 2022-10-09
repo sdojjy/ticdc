@@ -49,7 +49,7 @@ var (
 			Subsystem: "owner",
 			Name:      "checkpoint_lag_histogram",
 			Help:      "checkpoint lag histogram of changefeeds",
-			Buckets:   prometheus.ExponentialBuckets(0.5, 2, 10),
+			Buckets:   []float64{1, 2, 3, 4, 5, 6, 7, 8, 10, 14, 20, 40, 80, 160, 320},
 		}, []string{"namespace", "changefeed"})
 
 	changefeedResolvedTsGauge = prometheus.NewGaugeVec(
@@ -73,7 +73,7 @@ var (
 			Subsystem: "owner",
 			Name:      "resolved_ts_lag_histogram",
 			Help:      "resolved_ts lag histogram of changefeeds",
-			Buckets:   prometheus.ExponentialBuckets(0.5, 2, 10),
+			Buckets:   []float64{1, 2, 3, 4, 5, 6, 7, 8, 10, 14, 20, 40, 80, 160, 320},
 		}, []string{"namespace", "changefeed"})
 
 	ownershipCounter = prometheus.NewCounter(

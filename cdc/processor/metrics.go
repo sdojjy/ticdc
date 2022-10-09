@@ -53,6 +53,15 @@ var (
 			Name:      "checkpoint_ts_lag",
 			Help:      "global checkpoint ts lag of processor",
 		}, []string{"namespace", "changefeed"})
+	changefeedCheckpointLagDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "ticdc",
+			Subsystem: "processor",
+			Name:      "resolved_ts_lag_histogram",
+			Help:      "checkpoint lag histogram of changefeeds",
+			Buckets:   []float64{1, 2, 3, 4, 5, 6, 7, 8, 10, 14, 20, 40, 80, 160, 320},
+		}, []string{"namespace", "changefeed"})
+
 	checkpointTsMinTableIDGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "ticdc",
@@ -140,4 +149,5 @@ func InitMetrics(registry *prometheus.Registry) {
 	registry.MustRegister(tableMemoryHistogram)
 	registry.MustRegister(processorMemoryGauge)
 	registry.MustRegister(remainKVEventsGauge)
+	registry.MustRegister(changefeedCheckpointLagDuration)
 }
