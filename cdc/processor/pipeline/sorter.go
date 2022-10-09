@@ -100,6 +100,8 @@ type sorterNode struct {
 
 	metricsRecvResolvedTsLagGauge prometheus.Observer
 
+	metricsRecvBarrierTsLagGauge prometheus.Observer
+
 	pdClock pdutil.Clock
 }
 
@@ -128,7 +130,10 @@ func newSorterNode(
 		metricsResolvedTsLagGauge: changefeedResolvedTsLagGauge.WithLabelValues(changefeed.Namespace, changefeed.ID),
 
 		metricsRecvResolvedTsLagGauge: changefeedReResolvedTsLagGauge.WithLabelValues(changefeed.Namespace, changefeed.ID),
-		pdClock:                       pdClock,
+
+		metricsRecvBarrierTsLagGauge: changefeedReBarrierTsLagGauge.WithLabelValues(changefeed.Namespace, changefeed.ID),
+
+		pdClock: pdClock,
 	}
 }
 
@@ -392,19 +397,18 @@ func (n *sorterNode) handleRawEvent(ctx context.Context, event *model.Polymorphi
 			checkpointLag := float64(oracle.GetPhysical(pt)-phyCkpTs) / 1e3
 			n.metricsRecvResolvedTsLagGauge.Observe(checkpointLag)
 		}
-
-		if resolvedTs > n.BarrierTs() && !n.redoLogEnabled {
-			// Do not send resolved ts events that is larger than
-			// barrier ts.
-			// When DDL puller stall, resolved events that outputted by
-			// sorter may pile up in memory, as they have to wait DDL.
-			//
-			// Disabled if redolog is on, it requires sink reports
-			// resolved ts, conflicts to this change.
-			// TODO: Remove redolog check once redolog decouples for global
-			//       resolved ts.
-			event = model.NewResolvedPolymorphicEvent(0, n.BarrierTs())
-		}
+		//if resolvedTs > n.BarrierTs() && !n.redoLogEnabled {
+		// Do not send resolved ts events that is larger than
+		// barrier ts.
+		// When DDL puller stall, resolved events that outputted by
+		// sorter may pile up in memory, as they have to wait DDL.
+		//
+		// Disabled if redolog is on, it requires sink reports
+		// resolved ts, conflicts to this change.
+		// TODO: Remove redolog check once redolog decouples for global
+		//       resolved ts.
+		//	event = model.NewResolvedPolymorphicEvent(0, n.BarrierTs())
+		//}
 		// sorterNode is preparing, and a resolved ts greater than the `sorterNode`
 		// startTs (which is used to initialize the `sorterNode.resolvedTs`) received,
 		// this indicates that all regions connected,
@@ -420,6 +424,12 @@ func (n *sorterNode) handleRawEvent(ctx context.Context, event *model.Polymorphi
 		}
 	} else {
 		atomic.AddInt64(&n.remainEvents, 1)
+	}
+	pt, err := n.pdClock.CurrentTime()
+	if err == nil {
+		phyCkpTs := oracle.ExtractPhysical(event.CRTs)
+		checkpointLag := float64(oracle.GetPhysical(pt)-phyCkpTs) / 1e3
+		n.metricsRecvBarrierTsLagGauge.Observe(checkpointLag)
 	}
 	n.sorter.AddEntry(ctx, event)
 }
