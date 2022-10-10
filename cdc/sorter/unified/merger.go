@@ -211,7 +211,7 @@ func runMerger(ctx context.Context, numSorters int, in <-chan *flushTask, out ch
 			return errors.Trace(loopErr)
 		}
 
-		resolvedTicker := time.NewTicker(10 * time.Millisecond)
+		resolvedTicker := time.NewTicker(1 * time.Second)
 		defer resolvedTicker.Stop()
 
 		retire := func(task *flushTask) error {
