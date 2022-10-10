@@ -94,9 +94,9 @@ func (s *checkpointTsSenderImpl) SendCheckpoint(ctx context.Context, provider ch
 		return nil
 	}
 
-	if s.clock.Since(s.lastSendCheckpointTime) < s.sendCheckpointTsInterval {
-		return nil
-	}
+	//if s.clock.Since(s.lastSendCheckpointTime) < s.sendCheckpointTsInterval {
+	//	return nil
+	//}
 
 	done, err := s.communicator.SendCheckpoint(ctx, checkpointTs, resolvedTs)
 	if err != nil {

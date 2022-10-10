@@ -98,7 +98,9 @@ type processor struct {
 	metricProcessorErrorCounter     prometheus.Counter
 	metricProcessorTickDuration     prometheus.Observer
 
-	metricsChangefeedCheckpointLagDuration prometheus.Observer
+	metricsChangefeedResolvedTsLagDuration prometheus.Observer
+
+	metricAddvancedChangefeedResolvedTsLag prometheus.Observer
 
 	metricsTableSinkTotalRows prometheus.Counter
 
@@ -436,7 +438,9 @@ func newProcessor(
 			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
 		metricProcessorTickDuration: processorTickDuration.
 			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
-		metricsChangefeedCheckpointLagDuration: changefeedCheckpointLagDuration.
+		metricsChangefeedResolvedTsLagDuration: changefeedResolvedTsLagDuration.
+			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
+		metricAddvancedChangefeedResolvedTsLag: addvancedChangefeedResolvedTsLag.
 			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
 		metricsTableSinkTotalRows: sinkmetric.TableSinkTotalRowsCountCounter.
 			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
@@ -578,11 +582,6 @@ func (p *processor) tick(ctx cdcContext.Context) error {
 	// it is no need to check the error here, because we will use
 	// local time when an error return, which is acceptable
 	pdTime, _ := p.upstream.PDClock.CurrentTime()
-	//pTime, _, err := p.upstream.PDClient.GetTS(ctx)
-	//if err != nil {
-	//	return nil
-	//}
-	//pdTime :=oracle.GetTimeFromTS(oracle.ComposeTS(pTime, 0))
 	p.handlePosition(oracle.GetPhysical(pdTime))
 	p.pushResolvedTs2Table()
 
@@ -885,13 +884,13 @@ func (p *processor) handlePosition(currentTs int64) {
 	if p.schemaStorage != nil {
 		minResolvedTs = p.schemaStorage.ResolvedTs()
 	}
-	//for _, table := range p.tables {
-	//	ts := table.ResolvedTs()
-	//	if ts < minResolvedTs {
-	//		minResolvedTs = ts
-	//		minResolvedTableID = table.ID()
-	//	}
-	//}
+	for _, table := range p.tables {
+		ts := table.ResolvedTs()
+		if ts < minResolvedTs {
+			minResolvedTs = ts
+			minResolvedTableID = table.ID()
+		}
+	}
 
 	minCheckpointTs := minResolvedTs
 	minCheckpointTableID := int64(0)
@@ -904,8 +903,10 @@ func (p *processor) handlePosition(currentTs int64) {
 	}
 
 	resolvedPhyTs := oracle.ExtractPhysical(minResolvedTs)
+	prePyTs := oracle.ExtractPhysical(p.resolvedTs)
 	p.metricResolvedTsLagGauge.Set(float64(currentTs-resolvedPhyTs) / 1e3)
-	p.metricsChangefeedCheckpointLagDuration.Observe(float64(currentTs-resolvedPhyTs) / 1e3)
+	p.metricsChangefeedResolvedTsLagDuration.Observe(float64(currentTs-resolvedPhyTs) / 1e3)
+	p.metricAddvancedChangefeedResolvedTsLag.Observe(float64(resolvedPhyTs-prePyTs) / 1e3)
 	p.metricResolvedTsGauge.Set(float64(resolvedPhyTs))
 	p.metricMinResolvedTableIDGauge.Set(float64(minResolvedTableID))
 
@@ -920,15 +921,15 @@ func (p *processor) handlePosition(currentTs int64) {
 
 // pushResolvedTs2Table sends global resolved ts to all the table pipelines.
 func (p *processor) pushResolvedTs2Table() {
-	//resolvedTs := p.changefeed.Status.ResolvedTs
-	resolvedTs := p.schemaStorage.ResolvedTs()
-	//if schemaResolvedTs < resolvedTs {
-	// Do not update barrier ts that is larger than
-	// DDL puller's resolved ts.
-	// When DDL puller stall, resolved events that outputted by sorter
-	// may pile up in memory, as they have to wait DDL.
-	//resolvedTs = schemaResolvedTs
-	//}
+	resolvedTs := p.changefeed.Status.ResolvedTs
+	schemaResolvedTs := p.schemaStorage.ResolvedTs()
+	if schemaResolvedTs < resolvedTs {
+		// Do not update barrier ts that is larger than
+		// DDL puller's resolved ts.
+		// When DDL puller stall, resolved events that outputted by sorter
+		// may pile up in memory, as they have to wait DDL.
+		resolvedTs = schemaResolvedTs
+	}
 	for _, table := range p.tables {
 		table.UpdateBarrierTs(resolvedTs)
 	}
