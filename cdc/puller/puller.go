@@ -50,8 +50,6 @@ type Puller interface {
 }
 
 type pullerImpl struct {
-	pdCli pd.Client
-
 	kvCli        kv.CDCKVClient
 	kvStorage    tikv.Storage
 	checkpointTs uint64
@@ -94,9 +92,9 @@ func New(ctx context.Context,
 	if len(spans) > 1 {
 		pullerType = "ddl"
 	}
-	metricCachedRegionCollectCounter := cachedRegionCollectCounter.
+	metricMissedRegionCollectCounter := missedRegionCollectCounter.
 		WithLabelValues(changefeed.Namespace, changefeed.ID, pullerType)
-	tsTracker := frontier.NewFrontier(0, metricCachedRegionCollectCounter, comparableSpans...)
+	tsTracker := frontier.NewFrontier(0, metricMissedRegionCollectCounter, comparableSpans...)
 	kvCli := kv.NewCDCKVClient(
 		ctx, pdCli, grpcPool, regionCache, pdClock, cfg, changefeed, tableID, tableName)
 	p := &pullerImpl{
@@ -110,8 +108,6 @@ func New(ctx context.Context,
 		changefeed:   changefeed,
 		tableID:      tableID,
 		tableName:    tableName,
-
-		pdCli: pdCli,
 	}
 	return p
 }
@@ -143,9 +139,6 @@ func (p *pullerImpl) Run(ctx context.Context) error {
 		WithLabelValues(p.changefeed.Namespace, p.changefeed.ID, "kv")
 	metricTxnCollectCounterResolved := txnCollectCounter.
 		WithLabelValues(p.changefeed.Namespace, p.changefeed.ID, "resolved")
-	metricsChangefeedResolvedTsLagGauge := changefeedResolvedTsLagGauge.
-		WithLabelValues(p.changefeed.Namespace, p.changefeed.ID)
-	metricsResolvedTsForwardDuration := resolvedTsForwardDuration.WithLabelValues(p.changefeed.Namespace, p.changefeed.ID)
 	defer func() {
 		outputChanSizeHistogram.DeleteLabelValues(p.changefeed.Namespace, p.changefeed.ID)
 		eventChanSizeHistogram.DeleteLabelValues(p.changefeed.Namespace, p.changefeed.ID)
@@ -208,7 +201,6 @@ func (p *pullerImpl) Run(ctx context.Context) error {
 			}
 
 			if e.Resolved != nil {
-				s := time.Now()
 				metricTxnCollectCounterResolved.Add(float64(len(e.Resolved.Spans)))
 				for _, resolvedSpan := range e.Resolved.Spans {
 					if !regionspan.IsSubSpan(resolvedSpan.Span, p.spans...) {
@@ -241,19 +233,11 @@ func (p *pullerImpl) Run(ctx context.Context) error {
 						zap.Duration("duration", time.Since(start)),
 						zap.Strings("spans", spans))
 				}
-				metricsResolvedTsForwardDuration.Observe(float64(time.Now().Sub(s).Milliseconds()))
 				if !initialized || resolvedTs == lastResolvedTs {
 					continue
 				}
-				pt, _, err := p.pdCli.GetTS(ctx)
-				if err == nil {
-					currentTs := oracle.GetTimeFromTS(oracle.ComposeTS(pt, 0))
-					phyCkpTs := oracle.ExtractPhysical(resolvedTs)
-					checkpointLag := float64(oracle.GetPhysical(currentTs)-phyCkpTs) / 1e3
-					metricsChangefeedResolvedTsLagGauge.Observe(checkpointLag)
-				}
 				lastResolvedTs = resolvedTs
-				err = output(&model.RawKVEntry{CRTs: resolvedTs, OpType: model.OpTypeResolved, RegionID: e.RegionID})
+				err := output(&model.RawKVEntry{CRTs: resolvedTs, OpType: model.OpTypeResolved, RegionID: e.RegionID})
 				if err != nil {
 					return errors.Trace(err)
 				}

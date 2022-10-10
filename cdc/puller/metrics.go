@@ -25,12 +25,12 @@ var (
 			Name:      "txn_collect_event_count",
 			Help:      "The number of events received from txn collector",
 		}, []string{"namespace", "changefeed", "type"})
-	cachedRegionCollectCounter = prometheus.NewCounterVec(
+	missedRegionCollectCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "ticdc",
 			Subsystem: "puller",
-			Name:      "region_resolved_cached_count",
-			Help:      "The number of regions cached when forward resolved ts",
+			Name:      "region_resolved_missed_count",
+			Help:      "The number of regions not cached when forward resolved ts",
 		}, []string{"namespace", "changefeed", "type"})
 	pullerResolvedTsGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -47,25 +47,6 @@ var (
 			Help:      "Puller entry buffer size",
 			Buckets:   prometheus.ExponentialBuckets(1, 2, 8),
 		}, []string{"namespace", "changefeed"})
-
-	resolvedTsForwardDuration = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Namespace: "ticdc",
-			Subsystem: "puller",
-			Name:      "resolved_ts_duration_histogram",
-			Help:      "resolved ts lag histogram of changefeeds",
-			Buckets:   prometheus.LinearBuckets(50, 50, 24),
-		}, []string{"namespace", "changefeed"})
-
-	changefeedResolvedTsLagGauge = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Namespace: "ticdc",
-			Subsystem: "puller",
-			Name:      "resolved_ts_lag_histogram",
-			Help:      "resolved ts lag histogram of changefeeds",
-			Buckets:   []float64{1, 2, 3, 4, 5, 6, 7, 8, 10, 14, 20, 40, 80, 160, 320},
-		}, []string{"namespace", "changefeed"})
-
 	memBufferSizeGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "ticdc",
@@ -93,12 +74,10 @@ var (
 // InitMetrics registers all metrics in this file
 func InitMetrics(registry *prometheus.Registry) {
 	registry.MustRegister(txnCollectCounter)
-	registry.MustRegister(cachedRegionCollectCounter)
+	registry.MustRegister(missedRegionCollectCounter)
 	registry.MustRegister(pullerResolvedTsGauge)
 	registry.MustRegister(memBufferSizeGauge)
 	registry.MustRegister(outputChanSizeHistogram)
 	registry.MustRegister(eventChanSizeHistogram)
 	registry.MustRegister(discardedDDLCounter)
-	registry.MustRegister(changefeedResolvedTsLagGauge)
-	registry.MustRegister(resolvedTsForwardDuration)
 }

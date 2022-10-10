@@ -397,18 +397,18 @@ func (n *sorterNode) handleRawEvent(ctx context.Context, event *model.Polymorphi
 			checkpointLag := float64(oracle.GetPhysical(pt)-phyCkpTs) / 1e3
 			n.metricsRecvResolvedTsLagGauge.Observe(checkpointLag)
 		}
-		//if resolvedTs > n.BarrierTs() && !n.redoLogEnabled {
-		// Do not send resolved ts events that is larger than
-		// barrier ts.
-		// When DDL puller stall, resolved events that outputted by
-		// sorter may pile up in memory, as they have to wait DDL.
-		//
-		// Disabled if redolog is on, it requires sink reports
-		// resolved ts, conflicts to this change.
-		// TODO: Remove redolog check once redolog decouples for global
-		//       resolved ts.
-		//	event = model.NewResolvedPolymorphicEvent(0, n.BarrierTs())
-		//}
+		if resolvedTs > n.BarrierTs() && !n.redoLogEnabled {
+			// Do not send resolved ts events that is larger than
+			// barrier ts.
+			// When DDL puller stall, resolved events that outputted by
+			// sorter may pile up in memory, as they have to wait DDL.
+			//
+			// Disabled if redolog is on, it requires sink reports
+			// resolved ts, conflicts to this change.
+			// TODO: Remove redolog check once redolog decouples for global
+			//       resolved ts.
+			event = model.NewResolvedPolymorphicEvent(0, n.BarrierTs())
+		}
 		// sorterNode is preparing, and a resolved ts greater than the `sorterNode`
 		// startTs (which is used to initialize the `sorterNode.resolvedTs`) received,
 		// this indicates that all regions connected,

@@ -105,6 +105,8 @@ type processor struct {
 	metricsTableMemoryHistogram prometheus.Observer
 	metricsProcessorMemoryGauge prometheus.Gauge
 	metricRemainKVEventGauge    prometheus.Gauge
+
+	metricsDDLResolvedTsLagHistogram prometheus.Observer
 }
 
 // checkReadyForMessages checks whether all necessary Etcd keys have been established.
@@ -443,6 +445,9 @@ func newProcessor(
 		metricsProcessorMemoryGauge: processorMemoryGauge.
 			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
 		metricRemainKVEventGauge: remainKVEventsGauge.
+			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
+
+		metricsDDLResolvedTsLagHistogram: ddlResolvedTsLagGauge.
 			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
 	}
 	p.createTablePipeline = p.createTablePipelineImpl
@@ -835,6 +840,12 @@ func (p *processor) createAndDriveSchemaStorage(ctx cdcContext.Context) (entry.S
 			}
 			failpoint.Inject("processorDDLResolved", nil)
 			if jobEntry.OpType == model.OpTypeResolved {
+				pt, err := p.upstream.PDClock.CurrentTime()
+				if err == nil {
+					phyCkpTs := oracle.ExtractPhysical(jobEntry.CRTs)
+					checkpointLag := float64(oracle.GetPhysical(pt)-phyCkpTs) / 1e3
+					p.metricsDDLResolvedTsLagHistogram.Observe(checkpointLag)
+				}
 				schemaStorage.AdvanceResolvedTs(jobEntry.CRTs)
 			}
 			job, err := jobEntry.Job, jobEntry.Err
@@ -874,13 +885,13 @@ func (p *processor) handlePosition(currentTs int64) {
 	if p.schemaStorage != nil {
 		minResolvedTs = p.schemaStorage.ResolvedTs()
 	}
-	for _, table := range p.tables {
-		ts := table.ResolvedTs()
-		if ts < minResolvedTs {
-			minResolvedTs = ts
-			minResolvedTableID = table.ID()
-		}
-	}
+	//for _, table := range p.tables {
+	//	ts := table.ResolvedTs()
+	//	if ts < minResolvedTs {
+	//		minResolvedTs = ts
+	//		minResolvedTableID = table.ID()
+	//	}
+	//}
 
 	minCheckpointTs := minResolvedTs
 	minCheckpointTableID := int64(0)
@@ -909,15 +920,15 @@ func (p *processor) handlePosition(currentTs int64) {
 
 // pushResolvedTs2Table sends global resolved ts to all the table pipelines.
 func (p *processor) pushResolvedTs2Table() {
-	resolvedTs := p.changefeed.Status.ResolvedTs
-	schemaResolvedTs := p.schemaStorage.ResolvedTs()
-	if schemaResolvedTs < resolvedTs {
-		// Do not update barrier ts that is larger than
-		// DDL puller's resolved ts.
-		// When DDL puller stall, resolved events that outputted by sorter
-		// may pile up in memory, as they have to wait DDL.
-		resolvedTs = schemaResolvedTs
-	}
+	//resolvedTs := p.changefeed.Status.ResolvedTs
+	resolvedTs := p.schemaStorage.ResolvedTs()
+	//if schemaResolvedTs < resolvedTs {
+	// Do not update barrier ts that is larger than
+	// DDL puller's resolved ts.
+	// When DDL puller stall, resolved events that outputted by sorter
+	// may pile up in memory, as they have to wait DDL.
+	//resolvedTs = schemaResolvedTs
+	//}
 	for _, table := range p.tables {
 		table.UpdateBarrierTs(resolvedTs)
 	}
