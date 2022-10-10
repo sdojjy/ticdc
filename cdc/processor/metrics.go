@@ -62,13 +62,22 @@ var (
 			Buckets:   []float64{1, 2, 3, 4, 5, 6, 7, 8, 10, 14, 20, 40, 80, 160, 320},
 		}, []string{"namespace", "changefeed"})
 
+	schemaResolvedTsLagDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "ticdc",
+			Subsystem: "processor",
+			Name:      "schema_resolved_ts_lag_histogram",
+			Help:      "checkpoint lag histogram of changefeeds",
+			Buckets:   []float64{1, 2, 3, 4, 5, 6, 7, 8, 10, 14, 20, 40, 80, 160, 320},
+		}, []string{"namespace", "changefeed"})
+
 	addvancedChangefeedResolvedTsLag = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: "ticdc",
 			Subsystem: "processor",
 			Name:      "addvanced_resolved_ts_lag_histogram",
 			Help:      "checkpoint lag histogram of changefeeds",
-			Buckets:   []float64{1, 2, 3, 4, 5, 6, 7, 8, 10, 14, 20, 40, 80, 160, 320},
+			Buckets:   []float64{0.1, 0.2, 0.5, 0.8, 1, 2, 3, 4, 5, 6, 7, 8, 10, 14, 20, 40, 80, 160, 320},
 		}, []string{"namespace", "changefeed"})
 
 	checkpointTsMinTableIDGauge = prometheus.NewGaugeVec(
@@ -170,4 +179,5 @@ func InitMetrics(registry *prometheus.Registry) {
 	registry.MustRegister(changefeedResolvedTsLagDuration)
 	registry.MustRegister(ddlResolvedTsLagGauge)
 	registry.MustRegister(addvancedChangefeedResolvedTsLag)
+	registry.MustRegister(schemaResolvedTsLagDuration)
 }

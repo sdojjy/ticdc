@@ -102,6 +102,8 @@ type processor struct {
 
 	metricAddvancedChangefeedResolvedTsLag prometheus.Observer
 
+	metricSchemaResolvedTsLagDuration prometheus.Observer
+
 	metricsTableSinkTotalRows prometheus.Counter
 
 	metricsTableMemoryHistogram prometheus.Observer
@@ -441,6 +443,8 @@ func newProcessor(
 		metricsChangefeedResolvedTsLagDuration: changefeedResolvedTsLagDuration.
 			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
 		metricAddvancedChangefeedResolvedTsLag: addvancedChangefeedResolvedTsLag.
+			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
+		metricSchemaResolvedTsLagDuration: schemaResolvedTsLagDuration.
 			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
 		metricsTableSinkTotalRows: sinkmetric.TableSinkTotalRowsCountCounter.
 			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
@@ -884,6 +888,8 @@ func (p *processor) handlePosition(currentTs int64) {
 	if p.schemaStorage != nil {
 		minResolvedTs = p.schemaStorage.ResolvedTs()
 	}
+	resolvedPhyTs := oracle.ExtractPhysical(minResolvedTs)
+	p.metricSchemaResolvedTsLagDuration.Observe(float64(currentTs-resolvedPhyTs) / 1e3)
 	for _, table := range p.tables {
 		ts := table.ResolvedTs()
 		if ts < minResolvedTs {
@@ -902,7 +908,7 @@ func (p *processor) handlePosition(currentTs int64) {
 		}
 	}
 
-	resolvedPhyTs := oracle.ExtractPhysical(minResolvedTs)
+	resolvedPhyTs = oracle.ExtractPhysical(minResolvedTs)
 	prePyTs := oracle.ExtractPhysical(p.resolvedTs)
 	p.metricResolvedTsLagGauge.Set(float64(currentTs-resolvedPhyTs) / 1e3)
 	p.metricsChangefeedResolvedTsLagDuration.Observe(float64(currentTs-resolvedPhyTs) / 1e3)
