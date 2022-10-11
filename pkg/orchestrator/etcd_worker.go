@@ -36,7 +36,6 @@ import (
 	"go.etcd.io/etcd/client/v3/concurrency"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"golang.org/x/time/rate"
 )
 
 const (
@@ -176,8 +175,8 @@ func (worker *EtcdWorker) Run(ctx context.Context, session *concurrency.Session,
 
 	// tickRate represents the number of times EtcdWorker can tick
 	// the reactor per second
-	tickRate := time.Second / timerInterval
-	rl := rate.NewLimiter(rate.Limit(tickRate), 1)
+	//tickRate := time.Second / timerInterval
+	//rl := rate.NewLimiter(rate.Limit(tickRate), 1)
 	for {
 		select {
 		case <-ctx.Done():
@@ -259,9 +258,9 @@ func (worker *EtcdWorker) Run(ctx context.Context, session *concurrency.Session,
 			// It makes etcdWorker to batch etcd changed event in worker.state.
 			// The semantics of `ReactorState` requires that any implementation
 			// can batch updates internally.
-			if !rl.Allow() {
-				continue
-			}
+			//if !rl.Allow() {
+			//	continue
+			//}
 			startTime := time.Now()
 			// it is safe that a batch of updates has been applied to worker.state before worker.reactor.Tick
 			nextState, err := worker.reactor.Tick(ctx, worker.state)
@@ -281,6 +280,17 @@ func (worker *EtcdWorker) Run(ctx context.Context, session *concurrency.Session,
 			}
 			worker.state = nextState
 			pendingPatches = append(pendingPatches, nextState.GetPatches()...)
+
+			if len(pendingPatches) > 0 {
+				// Here we have some patches yet to be uploaded to Etcd.
+				pendingPatches, err = worker.applyPatchGroups(ctx, pendingPatches)
+				if isRetryableError(err) {
+					continue
+				}
+				if err != nil {
+					return errors.Trace(err)
+				}
+			}
 		}
 	}
 }
