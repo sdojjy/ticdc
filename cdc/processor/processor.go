@@ -583,11 +583,11 @@ func (p *processor) tick(ctx cdcContext.Context) error {
 	if err := p.lazyInit(ctx); err != nil {
 		return errors.Trace(err)
 	}
+	p.pushResolvedTs2Table()
 	// it is no need to check the error here, because we will use
 	// local time when an error return, which is acceptable
 	pdTime, _ := p.upstream.PDClock.CurrentTime()
 	p.handlePosition(oracle.GetPhysical(pdTime))
-	p.pushResolvedTs2Table()
 
 	p.doGCSchemaStorage()
 
@@ -846,8 +846,15 @@ func (p *processor) createAndDriveSchemaStorage(ctx cdcContext.Context) (entry.S
 				pt, err := p.upstream.PDClock.CurrentTime()
 				if err == nil {
 					phyCkpTs := oracle.ExtractPhysical(jobEntry.CRTs)
+					kvTime := oracle.GetTimeFromTS(jobEntry.CRTs)
 					checkpointLag := float64(oracle.GetPhysical(pt)-phyCkpTs) / 1e3
 					p.metricsDDLResolvedTsLagHistogram.Observe(checkpointLag)
+					log.Info("update resolved ts",
+						zap.String("m", "ddl"),
+						zap.Float64("lag", checkpointLag),
+						zap.Time("pdtime", pt),
+						zap.Time("kvtime", kvTime),
+						zap.Uint64("ts", jobEntry.CRTs))
 				}
 				schemaStorage.AdvanceResolvedTs(jobEntry.CRTs)
 			}
