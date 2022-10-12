@@ -378,9 +378,9 @@ func (n *sinkNode) HandleMessage(ctx context.Context, msg pmessage.Message) (boo
 }
 
 func (n *sinkNode) updateBarrierTs(ctx context.Context, ts model.Ts) error {
-	if ts > n.BarrierTs() {
-		atomic.StoreUint64(&n.barrierTs, ts)
-	}
+	//if ts > n.BarrierTs() {
+	//	atomic.StoreUint64(&n.barrierTs, ts)
+	//}
 	if err := n.flushSink(ctx, n.getResolvedTs()); err != nil {
 		return errors.Trace(err)
 	}
