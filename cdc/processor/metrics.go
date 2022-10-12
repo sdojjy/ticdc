@@ -59,7 +59,7 @@ var (
 			Subsystem: "processor",
 			Name:      "resolved_ts_lag_histogram",
 			Help:      "checkpoint lag histogram of changefeeds",
-			Buckets:   prometheus.LinearBuckets(0.5, 0.5, 60),
+			Buckets:   prometheus.LinearBuckets(0.5, 0.5, 40),
 		}, []string{"namespace", "changefeed"})
 
 	schemaResolvedTsLagDuration = prometheus.NewHistogramVec(
