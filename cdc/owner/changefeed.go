@@ -342,11 +342,18 @@ func (c *changefeed) tick(ctx cdcContext.Context, captures map[model.CaptureID]*
 		}
 		return nil
 	}
+	log.Info("update resolved ts", zap.String("id", "sdojjy"),
+		zap.Uint64("barrier", barrierTs),
+		zap.Uint64("new", newResolvedTs),
+		zap.Uint64("pres", c.state.Status.ResolvedTs),
+		zap.Bool("new-barrier", newResolvedTs > barrierTs),
+		zap.Bool("new-pre", newResolvedTs > c.state.Status.ResolvedTs))
 
 	// If the owner is just initialized, barrierTs can be `checkpoint-1`. To avoid
 	// global resolvedTs and checkpointTs regression, we need to handle the case.
 	if newResolvedTs > barrierTs {
 		newResolvedTs = barrierTs
+		log.Info("update resolved ts", zap.String("id", "sdojjy"), zap.Uint64("barrier", barrierTs), zap.Uint64("new", newResolvedTs))
 	}
 	if newCheckpointTs > barrierTs {
 		newCheckpointTs = barrierTs
@@ -382,6 +389,8 @@ func (c *changefeed) tick(ctx cdcContext.Context, captures map[model.CaptureID]*
 		zap.String("changefeed", c.id.ID))
 	// resolvedTs should never regress but checkpointTs can, as checkpointTs has already
 	// been decreased when the owner is initialized.
+	log.Info("update resolved ts", zap.String("id", "sdojjy"), zap.Uint64("barrier", barrierTs), zap.Uint64("pres", prevResolvedTs))
+
 	if newResolvedTs < prevResolvedTs {
 		newResolvedTs = prevResolvedTs
 	}
@@ -753,6 +762,7 @@ func (c *changefeed) handleBarrier(ctx cdcContext.Context) (uint64, error) {
 			// so ddlResolvedTs would be less than barrierTs for a short time.
 			// TODO: To check if we can remove it, since the `c.barriers` is cleaned now.
 			if ddlResolvedTs < barrierTs {
+				log.Info("update resolved ts", zap.String("id", "sdojjy"), zap.Uint64("barrier", barrierTs), zap.Uint64("ddl", ddlResolvedTs))
 				return barrierTs, nil
 			}
 			// If the ddlResolvedTs is greater than barrierTs, we should not execute
@@ -763,7 +773,8 @@ func (c *changefeed) handleBarrier(ctx cdcContext.Context) (uint64, error) {
 			// If ddlResolvedTs(ts=11) > barrierTs(ts=10), it means the last barrier was sent
 			// to sink is barrierTs(ts=10), so the data have been sent ware at most ts=10 not ts=11.
 			c.barriers.Update(ddlJobBarrier, ddlResolvedTs)
-			return barrierTs, nil
+			log.Info("update resolved ts", zap.String("id", "sdojjy"), zap.Uint64("barrier", barrierTs), zap.Uint64("ddl", ddlResolvedTs))
+			return ddlResolvedTs, nil
 		}
 
 		// TiCDC guarantees all dml(s) that happen before a ddl was sent to
@@ -913,6 +924,7 @@ func (c *changefeed) updateMetrics(currentTs int64, checkpointTs, resolvedTs mod
 	resolvedLag := float64(currentTs-phyRTs) / 1e3
 	c.metricsChangefeedResolvedTsLagGauge.Set(resolvedLag)
 	c.metricsChangefeedResolvedTsLagDuration.Observe(resolvedLag)
+	log.Info("update resolved ts", zap.String("id", "sdojjy"), zap.String("m", "owner"), zap.Uint64("ts", resolvedTs))
 
 	c.metricsCurrentPDTsGauge.Set(float64(currentTs))
 }

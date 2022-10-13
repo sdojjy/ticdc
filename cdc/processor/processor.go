@@ -584,11 +584,11 @@ func (p *processor) tick(ctx cdcContext.Context) error {
 	if err := p.lazyInit(ctx); err != nil {
 		return errors.Trace(err)
 	}
+	p.pushResolvedTs2Table()
 	// it is no need to check the error here, because we will use
 	// local time when an error return, which is acceptable
 	pdTime, _ := p.upstream.PDClock.CurrentTime()
 	p.handlePosition(oracle.GetPhysical(pdTime))
-	p.pushResolvedTs2Table()
 
 	p.doGCSchemaStorage()
 
@@ -934,6 +934,7 @@ func (p *processor) handlePosition(currentTs int64) {
 
 	p.checkpointTs = minCheckpointTs
 	p.resolvedTs = minResolvedTs
+	log.Info("update resolved ts", zap.String("id", "sdojjy"), zap.String("m", "processor"), zap.Uint64("ts", minResolvedTs))
 }
 
 // pushResolvedTs2Table sends global resolved ts to all the table pipelines.
