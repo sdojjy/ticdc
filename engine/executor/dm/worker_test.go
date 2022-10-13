@@ -70,6 +70,7 @@ func TestFactory(t *testing.T) {
 		BusinessClientConn:    kvmock.NewMockClientConn(),
 		ResourceBroker:        broker.NewBrokerForTesting("exector-id"),
 	}
+	defer depsForTest.ResourceBroker.Close()
 	require.NoError(t, dp.Provide(func() workerParamListForTest {
 		return depsForTest
 	}))
@@ -109,7 +110,24 @@ func TestWorker(t *testing.T) {
 	require.NoError(t, dp.Provide(func() p2p.MessageHandlerManager {
 		return p2p.NewMockMessageHandlerManager()
 	}))
-	dmWorker := newDMWorker(dctx, "master-id", frameModel.WorkerDMDump, &dmconfig.SubTaskConfig{}, 0)
+	taskCfg := &config.TaskCfg{
+		JobCfg: config.JobCfg{
+			TargetDB: &dmconfig.DBConfig{},
+			Upstreams: []*config.UpstreamCfg{
+				{
+					MySQLInstance: dmconfig.MySQLInstance{
+						Mydumper: &dmconfig.MydumperConfig{},
+						Loader:   &dmconfig.LoaderConfig{},
+						Syncer:   &dmconfig.SyncerConfig{},
+						SourceID: "task-id",
+					},
+					DBCfg: &dmconfig.DBConfig{},
+				},
+			},
+		},
+		NeedExtStorage: true,
+	}
+	dmWorker := newDMWorker(dctx, "master-id", frameModel.WorkerDMDump, taskCfg)
 	unitHolder := &mockUnitHolder{}
 	dmWorker.unitHolder = unitHolder
 	dmWorker.BaseWorker = framework.MockBaseWorker("worker-id", "master-id", dmWorker)
