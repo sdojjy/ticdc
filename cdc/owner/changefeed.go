@@ -345,6 +345,7 @@ func (c *changefeed) tick(ctx cdcContext.Context, captures map[model.CaptureID]*
 	log.Info("update resolved ts", zap.String("id", "sdojjy"),
 		zap.Uint64("barrier", barrierTs),
 		zap.Uint64("new", newResolvedTs),
+		zap.Uint64("newCP", newCheckpointTs),
 		zap.Uint64("pres", c.state.Status.ResolvedTs),
 		zap.Bool("new-barrier", newResolvedTs > barrierTs),
 		zap.Bool("new-pre", newResolvedTs > c.state.Status.ResolvedTs))
@@ -924,7 +925,10 @@ func (c *changefeed) updateMetrics(currentTs int64, checkpointTs, resolvedTs mod
 	resolvedLag := float64(currentTs-phyRTs) / 1e3
 	c.metricsChangefeedResolvedTsLagGauge.Set(resolvedLag)
 	c.metricsChangefeedResolvedTsLagDuration.Observe(resolvedLag)
-	log.Info("update resolved ts", zap.String("id", "sdojjy"), zap.String("m", "owner"), zap.Uint64("ts", resolvedTs))
+	log.Info("update resolved ts", zap.String("id", "sdojjy"),
+		zap.String("m", "owner"),
+		zap.Uint64("cp", checkpointTs),
+		zap.Uint64("ts", resolvedTs))
 
 	c.metricsCurrentPDTsGauge.Set(float64(currentTs))
 }

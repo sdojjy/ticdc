@@ -498,7 +498,9 @@ func (r *Manager) AdvanceCheckpoint(
 
 		log.Info("update resolved ts", zap.String("id", "sdojjy"),
 			zap.Uint64("new", newResolvedTs),
-			zap.Uint64("pres", table.Checkpoint.ResolvedTs))
+			zap.Uint64("pres", table.Checkpoint.ResolvedTs),
+			zap.Uint64("newcp", newCheckpointTs),
+			zap.Uint64("preCP", table.Checkpoint.CheckpointTs))
 	}
 	if slowestTableID != 0 {
 		r.slowestTableID = slowestTableID

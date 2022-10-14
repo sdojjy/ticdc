@@ -182,6 +182,7 @@ func (a *agent) Tick(ctx context.Context) error {
 		status := table.getTableStatus()
 		log.Info("update resolved ts", zap.String("id", "sdojjy"),
 			zap.String("m", "processor"),
+			zap.Uint64("cp", status.Checkpoint.ResolvedTs),
 			zap.Uint64("ts", status.Checkpoint.ResolvedTs))
 		if table.task != nil && table.task.IsRemove {
 			status.State = tablepb.TableStateStopping
@@ -268,6 +269,7 @@ func (a *agent) handleMessageHeartbeat(request *schedulepb.Heartbeat) *schedulep
 		status := table.getTableStatus()
 		log.Info("update resolved ts", zap.String("id", "sdojjy"),
 			zap.String("m", "processor"),
+			zap.Uint64("cp", status.Checkpoint.CheckpointTs),
 			zap.Uint64("ts", status.Checkpoint.ResolvedTs))
 		if table.task != nil && table.task.IsRemove {
 			status.State = tablepb.TableStateStopping

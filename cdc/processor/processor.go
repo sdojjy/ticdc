@@ -934,7 +934,10 @@ func (p *processor) handlePosition(currentTs int64) {
 
 	p.checkpointTs = minCheckpointTs
 	p.resolvedTs = minResolvedTs
-	log.Info("update resolved ts", zap.String("id", "sdojjy"), zap.String("m", "processor"), zap.Uint64("ts", minResolvedTs))
+	log.Info("update resolved ts", zap.String("id", "sdojjy"),
+		zap.String("m", "processor"),
+		zap.Uint64("cp", minCheckpointTs),
+		zap.Uint64("ts", minResolvedTs))
 }
 
 // pushResolvedTs2Table sends global resolved ts to all the table pipelines.
