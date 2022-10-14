@@ -943,6 +943,9 @@ func (p *processor) handlePosition(currentTs int64) {
 // pushResolvedTs2Table sends global resolved ts to all the table pipelines.
 func (p *processor) pushResolvedTs2Table() {
 	resolvedTs := p.changefeed.Status.ResolvedTs
+	log.Info("update resolved ts", zap.String("id", "sdojjy"),
+		zap.String("m", "processor"),
+		zap.Uint64("ts", resolvedTs))
 	schemaResolvedTs := p.schemaStorage.ResolvedTs()
 	if schemaResolvedTs < resolvedTs {
 		// Do not update barrier ts that is larger than
