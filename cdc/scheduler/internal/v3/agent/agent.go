@@ -180,10 +180,6 @@ func (a *agent) Tick(ctx context.Context) error {
 	result := make([]tablepb.TableStatus, 0, len(allTables))
 	for _, table := range allTables {
 		status := table.getTableStatus()
-		log.Info("update resolved ts", zap.String("id", "sdojjy"),
-			zap.String("m", "processor"),
-			zap.Uint64("cp", status.Checkpoint.ResolvedTs),
-			zap.Uint64("ts", status.Checkpoint.ResolvedTs))
 		if table.task != nil && table.task.IsRemove {
 			status.State = tablepb.TableStateStopping
 		}
@@ -202,6 +198,7 @@ func (a *agent) Tick(ctx context.Context) error {
 		status := response.Tables[0]
 		log.Info("update resolved ts", zap.String("id", "sdojjy"),
 			zap.String("m", "processor"),
+			zap.Uint64("cp", status.Checkpoint.CheckpointTs),
 			zap.Uint64("ts", status.Checkpoint.ResolvedTs))
 		outboundMessages = append(outboundMessages, message)
 	}
