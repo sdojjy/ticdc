@@ -184,6 +184,10 @@ func (n *sinkNode) flushSink(ctx context.Context, resolved model.ResolvedTs) (er
 		}
 		checkpoint = n.sinkV2.GetCheckpointTs()
 	}
+	log.Info("update checkpoint",
+		zap.String("id", "sdojjy"),
+		zap.Uint64("resolved", resolved.ResolvedMark()),
+		zap.Uint64("checkpoint", checkpoint.ResolvedMark()))
 
 	// we must call flowController.Release immediately after we call
 	// FlushRowChangedEvents to prevent deadlock cause by checkpointTs
