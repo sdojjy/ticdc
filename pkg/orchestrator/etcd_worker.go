@@ -14,6 +14,7 @@
 package orchestrator
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strconv"
@@ -226,7 +227,7 @@ func (worker *EtcdWorker) Run(ctx context.Context, session *concurrency.Session,
 
 			for _, event := range response.Events {
 				// handleEvent will apply the event to our internal `rawState`.
-				worker.handleEvent(ctx, event)
+				worker.handleEvent(ctx, role, event)
 			}
 			typeS = "update"
 		}
@@ -234,7 +235,7 @@ func (worker *EtcdWorker) Run(ctx context.Context, session *concurrency.Session,
 		tryCommitPendingPatches := func() (bool, error) {
 			if len(pendingPatches) > 0 {
 				// Here we have some patches yet to be uploaded to Etcd.
-				pendingPatches, commitedChanges, err = worker.applyPatchGroups(ctx, pendingPatches)
+				pendingPatches, commitedChanges, err = worker.applyPatchGroups(ctx, role, pendingPatches)
 				if isRetryableError(err) {
 					return true, nil
 				}
@@ -305,9 +306,9 @@ func (worker *EtcdWorker) Run(ctx context.Context, session *concurrency.Session,
 		pendingPatches = append(pendingPatches, nextState.GetPatches()...)
 
 		//apply pending patches
-		//if retry, err = tryCommitPendingPatches(); err != nil {
-		//	return err
-		//}
+		if retry, err = tryCommitPendingPatches(); err != nil {
+			return err
+		}
 	}
 }
 
@@ -323,7 +324,7 @@ func isRetryableError(err error) bool {
 	return ok
 }
 
-func (worker *EtcdWorker) handleEvent(_ context.Context, event *clientv3.Event) {
+func (worker *EtcdWorker) handleEvent(_ context.Context, role string, event *clientv3.Event) {
 	if worker.isDeleteCounterKey(event.Kv.Key) {
 		switch event.Type {
 		case mvccpb.PUT:
@@ -353,6 +354,11 @@ func (worker *EtcdWorker) handleEvent(_ context.Context, event *clientv3.Event) 
 			value:       value,
 			modRevision: event.Kv.ModRevision,
 		}
+		log.Info("update", zap.String("id", "sdojjy"),
+			zap.String("role", role),
+			zap.String("key", string(event.Kv.Key)),
+			zap.String("value", string(event.Kv.Value)),
+		)
 	case mvccpb.DELETE:
 		delete(worker.rawState, util.NewEtcdKeyFromBytes(event.Kv.Key))
 	}
@@ -395,7 +401,7 @@ func (worker *EtcdWorker) cloneRawState() map[util.EtcdKey][]byte {
 	return ret
 }
 
-func (worker *EtcdWorker) applyPatchGroups(ctx context.Context, patchGroups [][]DataPatch) ([][]DataPatch, int, error) {
+func (worker *EtcdWorker) applyPatchGroups(ctx context.Context, role string, patchGroups [][]DataPatch) ([][]DataPatch, int, error) {
 	state := worker.cloneRawState()
 	commitChanges := 0
 	for len(patchGroups) > 0 {
@@ -406,6 +412,16 @@ func (worker *EtcdWorker) applyPatchGroups(ctx context.Context, patchGroups [][]
 		if len(changeSate) == 0 {
 			break
 		}
+		var buf bytes.Buffer
+		for key, value := range changeSate {
+			buf.WriteString(key.String())
+			buf.WriteString("=")
+			buf.Write(value)
+		}
+		log.Info("update", zap.String("id", "sdojjy"),
+			zap.String("role", role),
+			zap.String("changes", buf.String()),
+		)
 		commitChanges += len(changeSate)
 		err = worker.commitChangedState(ctx, changeSate, size)
 		if err != nil {
