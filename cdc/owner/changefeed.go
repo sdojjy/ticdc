@@ -775,7 +775,8 @@ func (c *changefeed) handleBarrier(ctx cdcContext.Context) (uint64, error) {
 			// to sink is barrierTs(ts=10), so the data have been sent ware at most ts=10 not ts=11.
 			c.barriers.Update(ddlJobBarrier, ddlResolvedTs)
 			log.Info("update resolved ts", zap.String("id", "sdojjy"), zap.Uint64("barrier", barrierTs), zap.Uint64("ddl", ddlResolvedTs))
-			return ddlResolvedTs, nil
+			_, barrierTs = c.barriers.Min()
+			return barrierTs, nil
 		}
 
 		// TiCDC guarantees all dml(s) that happen before a ddl was sent to
