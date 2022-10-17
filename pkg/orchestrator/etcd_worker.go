@@ -163,11 +163,10 @@ func (worker *EtcdWorker) Run(ctx context.Context, session *concurrency.Session,
 	}
 
 	var (
-		pendingPatches  [][]DataPatch
-		commitedChanges int
-		exiting         bool
-		retry           bool
-		sessionDone     <-chan struct{}
+		pendingPatches [][]DataPatch
+		//commitedChanges int
+		exiting     bool
+		sessionDone <-chan struct{}
 	)
 	if session != nil {
 		sessionDone = session.Done()
@@ -232,31 +231,18 @@ func (worker *EtcdWorker) Run(ctx context.Context, session *concurrency.Session,
 			typeS = "update"
 		}
 
-		tryCommitPendingPatches := func() (bool, error) {
-			if len(pendingPatches) > 0 {
-				// Here we have some patches yet to be uploaded to Etcd.
-				pendingPatches, commitedChanges, err = worker.applyPatchGroups(ctx, role, pendingPatches)
-				if isRetryableError(err) {
-					return true, nil
-				}
-				if err != nil {
-					return false, errors.Trace(err)
-				}
-				// pendingPatches size may greater than 0, but nothing to commit to etcd
-				// if nothing is changed, we should not break this tick
-				if commitedChanges > 0 {
-					return true, nil
-				}
+		//tryCommitPendingPatches := func() (bool, error) {
+		if len(pendingPatches) > 0 {
+			// Here we have some patches yet to be uploaded to Etcd.
+			pendingPatches, _, err = worker.applyPatchGroups(ctx, role, pendingPatches)
+			if isRetryableError(err) {
+				continue
 			}
-			return false, nil
-		}
-		if retry, err = tryCommitPendingPatches(); err != nil {
-			return err
-		}
-		if retry {
+			if err != nil {
+				return errors.Trace(err)
+			}
 			continue
 		}
-
 		if exiting {
 			// If exiting is true here, it means that the reactor returned `ErrReactorFinished` last tick,
 			// and all pending patches is applied.
@@ -306,8 +292,14 @@ func (worker *EtcdWorker) Run(ctx context.Context, session *concurrency.Session,
 		pendingPatches = append(pendingPatches, nextState.GetPatches()...)
 
 		//apply pending patches
-		if retry, err = tryCommitPendingPatches(); err != nil {
-			return err
+		//if retry, err = tryCommitPendingPatches(); err != nil {
+		//	return err
+		//}
+		if len(pendingPatches) > 0 {
+			pendingPatches, _, err = worker.applyPatchGroups(ctx, role, pendingPatches)
+			if err != nil && !isRetryableError(err) {
+				return err
+			}
 		}
 	}
 }
