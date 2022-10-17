@@ -242,63 +242,64 @@ func (worker *EtcdWorker) Run(ctx context.Context, session *concurrency.Session,
 				return errors.Trace(err)
 			}
 			continue
-		}
-		if exiting {
-			// If exiting is true here, it means that the reactor returned `ErrReactorFinished` last tick,
-			// and all pending patches is applied.
-			return nil
-		}
-		if worker.revision < worker.barrierRev {
-			// We hold off notifying the Reactor because barrierRev has not been reached.
-			// This usually happens when a committed write Txn has not been received by Watch.
-			continue
-		}
+		} else {
+			if exiting {
+				// If exiting is true here, it means that the reactor returned `ErrReactorFinished` last tick,
+				// and all pending patches is applied.
+				return nil
+			}
+			if worker.revision < worker.barrierRev {
+				// We hold off notifying the Reactor because barrierRev has not been reached.
+				// This usually happens when a committed write Txn has not been received by Watch.
+				continue
+			}
 
-		// We are safe to update the ReactorState only if there is no pending patch.
-		if err := worker.applyUpdates(); err != nil {
-			return errors.Trace(err)
-		}
-
-		// If !rl.Allow(), skip this Tick to avoid etcd worker tick reactor too frequency.
-		// It makes etcdWorker to batch etcd changed event in worker.state.
-		// The semantics of `ReactorState` requires that any implementation
-		// can batch updates internally.
-		log.Info("tick", zap.String("id", "sdojjy"), zap.String("role", role), zap.String("type", typeS))
-		now := time.Now()
-		if now.Sub(lastTickTime.Add(-20*time.Millisecond)) < timerInterval {
-			log.Info("tick, limited", zap.String("id", "sdojjy"), zap.String("role", role), zap.Time("now", now), zap.Time("last", lastTickTime))
-			continue
-		}
-		lastTickTime = time.Now()
-		log.Info("tick,real", zap.String("id", "sdojjy"), zap.String("role", role))
-		startTime := time.Now()
-		// it is safe that a batch of updates has been applied to worker.state before worker.reactor.Tick
-		nextState, err := worker.reactor.Tick(ctx, worker.state)
-		costTime := time.Since(startTime)
-		if costTime > etcdWorkerLogsWarnDuration {
-			log.Warn("EtcdWorker reactor tick took too long",
-				zap.Duration("duration", costTime),
-				zap.String("role", role))
-		}
-		worker.metrics.metricEtcdWorkerTickDuration.Observe(costTime.Seconds())
-		if err != nil {
-			if !cerrors.ErrReactorFinished.Equal(errors.Cause(err)) {
+			// We are safe to update the ReactorState only if there is no pending patch.
+			if err := worker.applyUpdates(); err != nil {
 				return errors.Trace(err)
 			}
-			// normal exit
-			exiting = true
-		}
-		worker.state = nextState
-		pendingPatches = append(pendingPatches, nextState.GetPatches()...)
 
-		//apply pending patches
-		//if retry, err = tryCommitPendingPatches(); err != nil {
-		//	return err
-		//}
-		if len(pendingPatches) > 0 {
-			pendingPatches, _, err = worker.applyPatchGroups(ctx, role, pendingPatches)
-			if err != nil && !isRetryableError(err) {
-				return err
+			// If !rl.Allow(), skip this Tick to avoid etcd worker tick reactor too frequency.
+			// It makes etcdWorker to batch etcd changed event in worker.state.
+			// The semantics of `ReactorState` requires that any implementation
+			// can batch updates internally.
+			log.Info("tick", zap.String("id", "sdojjy"), zap.String("role", role), zap.String("type", typeS))
+			now := time.Now()
+			if now.Sub(lastTickTime.Add(-20*time.Millisecond)) < timerInterval {
+				log.Info("tick, limited", zap.String("id", "sdojjy"), zap.String("role", role), zap.Time("now", now), zap.Time("last", lastTickTime))
+				continue
+			}
+			lastTickTime = time.Now()
+			log.Info("tick,real", zap.String("id", "sdojjy"), zap.String("role", role))
+			startTime := time.Now()
+			// it is safe that a batch of updates has been applied to worker.state before worker.reactor.Tick
+			nextState, err := worker.reactor.Tick(ctx, worker.state)
+			costTime := time.Since(startTime)
+			if costTime > etcdWorkerLogsWarnDuration {
+				log.Warn("EtcdWorker reactor tick took too long",
+					zap.Duration("duration", costTime),
+					zap.String("role", role))
+			}
+			worker.metrics.metricEtcdWorkerTickDuration.Observe(costTime.Seconds())
+			if err != nil {
+				if !cerrors.ErrReactorFinished.Equal(errors.Cause(err)) {
+					return errors.Trace(err)
+				}
+				// normal exit
+				exiting = true
+			}
+			worker.state = nextState
+			pendingPatches = append(pendingPatches, nextState.GetPatches()...)
+
+			//apply pending patches
+			//if retry, err = tryCommitPendingPatches(); err != nil {
+			//	return err
+			//}
+			if len(pendingPatches) > 0 {
+				pendingPatches, _, err = worker.applyPatchGroups(ctx, role, pendingPatches)
+				if err != nil && !isRetryableError(err) {
+					return err
+				}
 			}
 		}
 	}
