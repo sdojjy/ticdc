@@ -443,9 +443,6 @@ func (n *sorterNode) handleRawEvent(ctx context.Context, event *model.Polymorphi
 
 func (n *sorterNode) updateBarrierTs(barrierTs model.Ts) {
 	if barrierTs > n.BarrierTs() {
-		log.Info("update resolved ts", zap.String("id", "sdojjy"),
-			zap.String("m", "processor"),
-			zap.Uint64("ts", barrierTs))
 		atomic.StoreUint64(&n.barrierTs, barrierTs)
 	}
 }

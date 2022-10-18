@@ -561,7 +561,6 @@ func (h *ddlPullerImpl) handleDDLJobEntry(jobEntry *model.DDLJobEntry) error {
 	if jobEntry.OpType == model.OpTypeResolved {
 		if jobEntry.CRTs > atomic.LoadUint64(&h.resolvedTS) {
 			h.lastResolvedTsAdvancedTime = h.clock.Now()
-			log.Info("update resolved ts", zap.String("id", "sdojjy"), zap.Uint64("ddlresolvedTS", jobEntry.CRTs))
 			atomic.StoreUint64(&h.resolvedTS, jobEntry.CRTs)
 		}
 		return nil
