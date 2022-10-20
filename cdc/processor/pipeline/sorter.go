@@ -394,15 +394,8 @@ func (n *sorterNode) handleRawEvent(ctx context.Context, event *model.Polymorphi
 		pt, err := n.pdClock.CurrentTime()
 		if err == nil {
 			phyCkpTs := oracle.ExtractPhysical(resolvedTs)
-			kvTime := oracle.GetTimeFromTS(resolvedTs)
 			checkpointLag := float64(oracle.GetPhysical(pt)-phyCkpTs) / 1e3
 			n.metricsRecvResolvedTsLagGauge.Observe(checkpointLag)
-			log.Info("update resolved ts",
-				zap.String("m", "sorter"),
-				zap.Float64("lag", checkpointLag),
-				zap.Time("pdtime", pt),
-				zap.Time("kvtime", kvTime),
-				zap.Uint64("ts", rawKV.CRTs))
 		}
 		if resolvedTs > n.BarrierTs() && !n.redoLogEnabled {
 			// Do not send resolved ts events that is larger than
