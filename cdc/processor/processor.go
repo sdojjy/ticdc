@@ -847,15 +847,8 @@ func (p *processor) createAndDriveSchemaStorage(ctx cdcContext.Context) (entry.S
 				pt, err := p.upstream.PDClock.CurrentTime()
 				if err == nil {
 					phyCkpTs := oracle.ExtractPhysical(jobEntry.CRTs)
-					kvTime := oracle.GetTimeFromTS(jobEntry.CRTs)
 					checkpointLag := float64(oracle.GetPhysical(pt)-phyCkpTs) / 1e3
 					p.metricsDDLResolvedTsLagHistogram.Observe(checkpointLag)
-					log.Info("update resolved ts",
-						zap.String("m", "ddl"),
-						zap.Float64("lag", checkpointLag),
-						zap.Time("pdtime", pt),
-						zap.Time("kvtime", kvTime),
-						zap.Uint64("ts", jobEntry.CRTs))
 				}
 				schemaStorage.AdvanceResolvedTs(jobEntry.CRTs)
 			}
