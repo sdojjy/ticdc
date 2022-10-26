@@ -232,6 +232,15 @@ func (n *sorterNode) start(
 					if err != nil {
 						return errors.Trace(err)
 					}
+					if msg.Row == nil {
+						log.Debug("message's row changed event is nil, it should be ignored",
+							zap.String("namespace", n.changefeed.Namespace),
+							zap.String("changefeed", n.changefeed.ID),
+							zap.Int64("tableID", n.tableID),
+							zap.String("tableName", n.tableName),
+							zap.Uint64("startTs", msg.StartTs))
+						continue
+					}
 
 					commitTs := msg.CRTs
 					// We interpolate a resolved-ts if none has been sent for some time.

@@ -99,23 +99,20 @@ func NewMounter(schemaStorage SchemaStorage,
 
 // DecodeEvent decode kv events using ddl puller's schemaStorage
 // this method could block indefinitely if the DDL puller is lagging.
-func (m *mounterImpl) DecodeEvent(ctx context.Context, pEvent *model.PolymorphicEvent) error {
+func (m *mounterImpl) DecodeEvent(ctx context.Context, event *model.PolymorphicEvent) error {
 	m.metricTotalRows.Inc()
-	if pEvent.IsResolved() {
+	if event.IsResolved() {
 		return nil
 	}
-	start := time.Now()
-	rowEvent, err := m.unmarshalAndMountRowChanged(ctx, pEvent.RawKV)
+	row, err := m.unmarshalAndMountRowChanged(ctx, event.RawKV)
 	if err != nil {
 		return errors.Trace(err)
 	}
-	pEvent.Row = rowEvent
-	pEvent.RawKV.Value = nil
-	pEvent.RawKV.OldValue = nil
-	duration := time.Since(start)
-	if duration > time.Second {
-		m.metricMountDuration.Observe(duration.Seconds())
-	}
+
+	event.Row = row
+	event.RawKV.Value = nil
+	event.RawKV.OldValue = nil
+
 	return nil
 }
 
