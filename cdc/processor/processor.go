@@ -97,11 +97,20 @@ type processor struct {
 	metricSchemaStorageGcTsGauge    prometheus.Gauge
 	metricProcessorErrorCounter     prometheus.Counter
 	metricProcessorTickDuration     prometheus.Observer
-	metricsTableSinkTotalRows       prometheus.Counter
+
+	metricsChangefeedResolvedTsLagDuration prometheus.Observer
+
+	metricAddvancedChangefeedResolvedTsLag prometheus.Observer
+
+	metricSchemaResolvedTsLagDuration prometheus.Observer
+
+	metricsTableSinkTotalRows prometheus.Counter
 
 	metricsTableMemoryHistogram prometheus.Observer
 	metricsProcessorMemoryGauge prometheus.Gauge
 	metricRemainKVEventGauge    prometheus.Gauge
+
+	metricsDDLResolvedTsLagHistogram prometheus.Observer
 }
 
 // checkReadyForMessages checks whether all necessary Etcd keys have been established.
@@ -432,6 +441,12 @@ func newProcessor(
 			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
 		metricProcessorTickDuration: processorTickDuration.
 			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
+		metricsChangefeedResolvedTsLagDuration: changefeedResolvedTsLagDuration.
+			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
+		metricAddvancedChangefeedResolvedTsLag: addvancedChangefeedResolvedTsLag.
+			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
+		metricSchemaResolvedTsLagDuration: schemaResolvedTsLagDuration.
+			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
 		metricsTableSinkTotalRows: sinkmetric.TableSinkTotalRowsCountCounter.
 			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
 		metricsTableMemoryHistogram: tableMemoryHistogram.
@@ -439,6 +454,9 @@ func newProcessor(
 		metricsProcessorMemoryGauge: processorMemoryGauge.
 			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
 		metricRemainKVEventGauge: remainKVEventsGauge.
+			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
+
+		metricsDDLResolvedTsLagHistogram: ddlResolvedTsLagGauge.
 			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
 	}
 	p.createTablePipeline = p.createTablePipelineImpl
@@ -826,6 +844,12 @@ func (p *processor) createAndDriveSchemaStorage(ctx cdcContext.Context) (entry.S
 			}
 			failpoint.Inject("processorDDLResolved", nil)
 			if jobEntry.OpType == model.OpTypeResolved {
+				pt, err := p.upstream.PDClock.CurrentTime()
+				if err == nil {
+					phyCkpTs := oracle.ExtractPhysical(jobEntry.CRTs)
+					checkpointLag := float64(oracle.GetPhysical(pt)-phyCkpTs) / 1e3
+					p.metricsDDLResolvedTsLagHistogram.Observe(checkpointLag)
+				}
 				schemaStorage.AdvanceResolvedTs(jobEntry.CRTs)
 			}
 			job, err := jobEntry.Job, jobEntry.Err
@@ -868,6 +892,8 @@ func (p *processor) handlePosition(currentTs int64) {
 	if p.schemaStorage != nil {
 		minResolvedTs = p.schemaStorage.ResolvedTs()
 	}
+	resolvedPhyTs := oracle.ExtractPhysical(minResolvedTs)
+	p.metricSchemaResolvedTsLagDuration.Observe(float64(currentTs-resolvedPhyTs) / 1e3)
 	for _, table := range p.tables {
 		ts := table.ResolvedTs()
 		if ts < minResolvedTs {
@@ -886,8 +912,11 @@ func (p *processor) handlePosition(currentTs int64) {
 		}
 	}
 
-	resolvedPhyTs := oracle.ExtractPhysical(minResolvedTs)
+	resolvedPhyTs = oracle.ExtractPhysical(minResolvedTs)
+	prePyTs := oracle.ExtractPhysical(p.resolvedTs)
 	p.metricResolvedTsLagGauge.Set(float64(currentTs-resolvedPhyTs) / 1e3)
+	p.metricsChangefeedResolvedTsLagDuration.Observe(float64(currentTs-resolvedPhyTs) / 1e3)
+	p.metricAddvancedChangefeedResolvedTsLag.Observe(float64(resolvedPhyTs-prePyTs) / 1e3)
 	p.metricResolvedTsGauge.Set(float64(resolvedPhyTs))
 	p.metricMinResolvedTableIDGauge.Set(float64(minResolvedTableID))
 

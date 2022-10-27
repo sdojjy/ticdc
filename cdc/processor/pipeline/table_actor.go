@@ -297,7 +297,7 @@ func (t *tableActor) start(sdtTableContext context.Context) error {
 	sorterNode := newSorterNode(t.tableName, t.tableID,
 		t.replicaInfo.StartTs, flowController,
 		t.mounter, &t.state, t.changefeedID, t.redoManager.Enabled(),
-		t.upstream.PDClient,
+		t.upstream.PDClient, t.upstream.PDClock,
 	)
 	t.sortNode = sorterNode
 	sortActorNodeContext := newContext(sdtTableContext, t.tableName,
@@ -423,6 +423,10 @@ var updateBarrierTsLogRateLimiter = rate.NewLimiter(rate.Every(time.Millisecond*
 
 // UpdateBarrierTs updates the barrier ts in this table pipeline
 func (t *tableActor) UpdateBarrierTs(ts model.Ts) {
+	//t.sortNode.updateBarrierTs(ts)
+	//if ts > t.sinkNode.BarrierTs() {
+	//	atomic.StoreUint64(&t.sinkNode.barrierTs, ts)
+	//}
 	msg := pmessage.BarrierMessage(ts)
 	err := t.router.Send(t.actorID, message.ValueMessage(msg))
 	if err != nil {

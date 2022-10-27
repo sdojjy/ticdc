@@ -18,6 +18,7 @@ import (
 	"github.com/pingcap/tiflow/cdc/kv"
 	"github.com/pingcap/tiflow/cdc/owner"
 	"github.com/pingcap/tiflow/cdc/processor"
+	"github.com/pingcap/tiflow/cdc/processor/pipeline"
 	"github.com/pingcap/tiflow/cdc/puller"
 	redo "github.com/pingcap/tiflow/cdc/redo/common"
 	"github.com/pingcap/tiflow/cdc/scheduler"
@@ -48,6 +49,7 @@ func init() {
 	initServerMetrics(registry)
 	kv.InitMetrics(registry)
 	puller.InitMetrics(registry)
+	pipeline.InitMetrics(registry)
 	sink.InitMetrics(registry)
 	sinkv2.InitMetrics(registry)
 	entry.InitMetrics(registry)

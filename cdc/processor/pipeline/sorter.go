@@ -31,9 +31,11 @@ import (
 	"github.com/pingcap/tiflow/pkg/actor/message"
 	"github.com/pingcap/tiflow/pkg/config"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
+	"github.com/pingcap/tiflow/pkg/pdutil"
 	"github.com/pingcap/tiflow/pkg/pipeline"
 	pmessage "github.com/pingcap/tiflow/pkg/pipeline/message"
 	"github.com/pingcap/tiflow/pkg/retry"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/tikv/client-go/v2/oracle"
 	pd "github.com/tikv/pd/client"
 	"go.uber.org/zap"
@@ -93,6 +95,14 @@ type sorterNode struct {
 	changefeed     model.ChangeFeedID
 	// remainEvents record the amount of event remain in sorter engine
 	remainEvents int64
+
+	metricsResolvedTsLagGauge prometheus.Observer
+
+	metricsRecvResolvedTsLagGauge prometheus.Observer
+
+	metricsRecvBarrierTsLagGauge prometheus.Observer
+
+	pdClock pdutil.Clock
 }
 
 func newSorterNode(
@@ -100,6 +110,7 @@ func newSorterNode(
 	flowController tableFlowController, mounter entry.Mounter,
 	state *tablepb.TableState, changefeed model.ChangeFeedID, redoLogEnabled bool,
 	pdClient pd.Client,
+	pdClock pdutil.Clock,
 ) *sorterNode {
 	return &sorterNode{
 		tableName:      tableName,
@@ -115,6 +126,14 @@ func newSorterNode(
 		pdClient:       pdClient,
 
 		changefeed: changefeed,
+
+		metricsResolvedTsLagGauge: changefeedResolvedTsLagGauge.WithLabelValues(changefeed.Namespace, changefeed.ID),
+
+		metricsRecvResolvedTsLagGauge: changefeedReResolvedTsLagGauge.WithLabelValues(changefeed.Namespace, changefeed.ID),
+
+		metricsRecvBarrierTsLagGauge: changefeedReBarrierTsLagGauge.WithLabelValues(changefeed.Namespace, changefeed.ID),
+
+		pdClock: pdClock,
 	}
 }
 
@@ -339,6 +358,12 @@ func (n *sorterNode) start(
 					if msg.CRTs < lastSentResolvedTs {
 						continue
 					}
+					pt, err := n.pdClock.CurrentTime()
+					if err == nil {
+						phyCkpTs := oracle.ExtractPhysical(msg.CRTs)
+						checkpointLag := float64(oracle.GetPhysical(pt)-phyCkpTs) / 1e3
+						n.metricsResolvedTsLagGauge.Observe(checkpointLag)
+					}
 					tickMsg := message.ValueMessage(pmessage.TickMessage())
 					_ = tableActorRouter.Send(tableActorID, tickMsg)
 					lastSentResolvedTs = msg.CRTs
@@ -364,6 +389,13 @@ func (n *sorterNode) handleRawEvent(ctx context.Context, event *model.Polymorphi
 				zap.Int64("tableID", n.tableID),
 				zap.Uint64("resolvedTs", resolvedTs),
 				zap.Uint64("oldResolvedTs", oldResolvedTs))
+		}
+		atomic.StoreUint64(&n.resolvedTs, rawKV.CRTs)
+		pt, err := n.pdClock.CurrentTime()
+		if err == nil {
+			phyCkpTs := oracle.ExtractPhysical(resolvedTs)
+			checkpointLag := float64(oracle.GetPhysical(pt)-phyCkpTs) / 1e3
+			n.metricsRecvResolvedTsLagGauge.Observe(checkpointLag)
 		}
 		if resolvedTs > n.BarrierTs() && !n.redoLogEnabled {
 			// Do not send resolved ts events that is larger than
@@ -392,6 +424,12 @@ func (n *sorterNode) handleRawEvent(ctx context.Context, event *model.Polymorphi
 		}
 	} else {
 		atomic.AddInt64(&n.remainEvents, 1)
+	}
+	pt, err := n.pdClock.CurrentTime()
+	if err == nil {
+		phyCkpTs := oracle.ExtractPhysical(event.CRTs)
+		checkpointLag := float64(oracle.GetPhysical(pt)-phyCkpTs) / 1e3
+		n.metricsRecvBarrierTsLagGauge.Observe(checkpointLag)
 	}
 	n.sorter.AddEntry(ctx, event)
 }

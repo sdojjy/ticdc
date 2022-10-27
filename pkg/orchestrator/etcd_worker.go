@@ -235,7 +235,6 @@ func (worker *EtcdWorker) Run(ctx context.Context, session *concurrency.Session,
 					return nil
 				}
 			}
-
 		}
 
 		tryCommitPendingPatches := func() (bool, error) {
@@ -410,20 +409,20 @@ func (worker *EtcdWorker) cloneRawState() map[util.EtcdKey][]byte {
 
 func (worker *EtcdWorker) applyPatchGroups(ctx context.Context, patchGroups [][]DataPatch) ([][]DataPatch, int, error) {
 	state := worker.cloneRawState()
-	committedChanges := 0
+	commitChanges := 0
 	for len(patchGroups) > 0 {
 		changeSate, n, size, err := getBatchChangedState(state, patchGroups)
 		if err != nil {
-			return patchGroups, committedChanges, err
+			return patchGroups, commitChanges, err
 		}
-		committedChanges += len(changeSate)
+		commitChanges += len(changeSate)
 		err = worker.commitChangedState(ctx, changeSate, size)
 		if err != nil {
-			return patchGroups, committedChanges, err
+			return patchGroups, commitChanges, err
 		}
 		patchGroups = patchGroups[n:]
 	}
-	return patchGroups, committedChanges, nil
+	return patchGroups, commitChanges, nil
 }
 
 func (worker *EtcdWorker) commitChangedState(ctx context.Context, changedState map[util.EtcdKey][]byte, size int) error {

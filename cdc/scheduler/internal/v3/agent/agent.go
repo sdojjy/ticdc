@@ -176,6 +176,27 @@ func (a *agent) Tick(ctx context.Context) error {
 	}
 
 	outboundMessages := a.handleMessage(inboundMessages)
+	allTables := a.tableM.getAllTables()
+	result := make([]tablepb.TableStatus, 0, len(allTables))
+	for _, table := range allTables {
+		status := table.getTableStatus()
+		if table.task != nil && table.task.IsRemove {
+			status.State = tablepb.TableStateStopping
+		}
+		result = append(result, status)
+	}
+	response := &schedulepb.HeartbeatResponse{
+		Tables:   result,
+		Liveness: a.liveness.Load(),
+	}
+
+	message := &schedulepb.Message{
+		MsgType:           schedulepb.MsgHeartbeatResponse,
+		HeartbeatResponse: response,
+	}
+	if len(outboundMessages) == 0 && len(response.Tables) > 0 {
+		outboundMessages = append(outboundMessages, message)
+	}
 
 	responses, err := a.tableM.poll(ctx)
 	if err != nil {

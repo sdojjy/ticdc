@@ -94,6 +94,14 @@ var (
 			Help:      "The number of region in one batch resolved ts event",
 			Buckets:   prometheus.ExponentialBuckets(2, 2, 16),
 		}, []string{"namespace", "changefeed"})
+	changefeedResolvedTsLagGauge = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "ticdc",
+			Subsystem: "kv",
+			Name:      "resolved_ts_lag_histogram",
+			Help:      "resolved ts lag histogram of changefeeds",
+			Buckets:   prometheus.LinearBuckets(0.5, 0.5, 60),
+		}, []string{"namespace", "changefeed"})
 	grpcPoolStreamGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "ticdc",
@@ -124,6 +132,7 @@ func InitMetrics(registry *prometheus.Registry) {
 	registry.MustRegister(clientRegionTokenSize)
 	registry.MustRegister(cachedRegionSize)
 	registry.MustRegister(batchResolvedEventSize)
+	registry.MustRegister(changefeedResolvedTsLagGauge)
 	registry.MustRegister(grpcPoolStreamGauge)
 	registry.MustRegister(regionEventsBatchSize)
 
