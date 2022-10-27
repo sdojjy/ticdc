@@ -167,21 +167,21 @@ func (m *mounterImpl) unmarshalAndMountRowChanged(ctx context.Context, raw *mode
 			if rowKV == nil {
 				return nil, nil
 			}
-			row, _, err := m.mountRowKVEntry(tableInfo, rowKV, raw.ApproximateDataSize())
+			row, rawRow, err := m.mountRowKVEntry(tableInfo, rowKV, raw.ApproximateDataSize())
 			if err != nil {
 				return nil, err
 			}
 			// We need to filter a row here because we need its tableInfo.
-			//ignore, err := m.filter.ShouldIgnoreDMLEvent(row, rawRow, tableInfo)
-			//if err != nil {
-			//	return nil, err
-			//}
-			//// TODO(dongmen): try to find better way to indicate this row has been filtered.
-			//// Return a nil RowChangedEvent if this row should be ignored.
-			//if ignore {
-			//	m.metricIgnoredDMLEventCounter.Inc()
-			//	return nil, nil
-			//}
+			ignore, err := m.filter.ShouldIgnoreDMLEvent(row, rawRow, tableInfo)
+			if err != nil {
+				return nil, err
+			}
+			// TODO(dongmen): try to find better way to indicate this row has been filtered.
+			// Return a nil RowChangedEvent if this row should be ignored.
+			if ignore {
+				m.metricIgnoredDMLEventCounter.Inc()
+				return nil, nil
+			}
 			return row, nil
 		}
 		return nil, nil
@@ -276,7 +276,7 @@ func parseJob(v []byte, startTs, CRTs uint64) (*timodel.Job, error) {
 
 func datum2Column(tableInfo *model.TableInfo, datums map[int64]types.Datum, fillWithDefaultValue bool) ([]*model.Column, []types.Datum, error) {
 	cols := make([]*model.Column, len(tableInfo.RowColumnsOffset))
-	//rawCols := make([]types.Datum, len(tableInfo.RowColumnsOffset))
+	rawCols := make([]types.Datum, len(tableInfo.RowColumnsOffset))
 	for _, colInfo := range tableInfo.Columns {
 		colSize := 0
 		if !model.IsColCDCVisible(colInfo) {
@@ -308,7 +308,7 @@ func datum2Column(tableInfo *model.TableInfo, datums map[int64]types.Datum, fill
 		}
 		defaultValue := getDDLDefaultDefinition(colInfo)
 		colSize += size
-		//rawCols[tableInfo.RowColumnsOffset[colInfo.ID]] = colDatums
+		rawCols[tableInfo.RowColumnsOffset[colInfo.ID]] = colDatums
 		cols[tableInfo.RowColumnsOffset[colInfo.ID]] = &model.Column{
 			Name:    colName,
 			Type:    colInfo.GetType(),
@@ -320,7 +320,7 @@ func datum2Column(tableInfo *model.TableInfo, datums map[int64]types.Datum, fill
 			ApproximateBytes: colSize + sizeOfEmptyColumn,
 		}
 	}
-	return cols, nil, nil
+	return cols, rawCols, nil
 }
 
 func (m *mounterImpl) mountRowKVEntry(tableInfo *model.TableInfo, row *rowKVEntry, dataSize int64) (*model.RowChangedEvent, model.RowChangedDatums, error) {
@@ -337,7 +337,7 @@ func (m *mounterImpl) mountRowKVEntry(tableInfo *model.TableInfo, row *rowKVEntr
 	if row.PreRowExist {
 		// FIXME(leoppro): using pre table info to mounter pre column datum
 		// the pre column and current column in one event may using different table info
-		preCols, _, err = datum2Column(tableInfo, row.PreRow, m.enableOldValue)
+		preCols, preRawCols, err = datum2Column(tableInfo, row.PreRow, m.enableOldValue)
 		if err != nil {
 			return nil, rawRow, errors.Trace(err)
 		}
@@ -357,7 +357,7 @@ func (m *mounterImpl) mountRowKVEntry(tableInfo *model.TableInfo, row *rowKVEntr
 	var cols []*model.Column
 	var rawCols []types.Datum
 	if row.RowExist {
-		cols, _, err = datum2Column(tableInfo, row.Row, true)
+		cols, rawCols, err = datum2Column(tableInfo, row.Row, true)
 		if err != nil {
 			return nil, rawRow, errors.Trace(err)
 		}
