@@ -378,7 +378,6 @@ func (c *changefeed) tick(ctx cdcContext.Context, captures map[model.CaptureID]*
 		zap.String("changefeed", c.id.ID))
 	// resolvedTs should never regress but checkpointTs can, as checkpointTs has already
 	// been decreased when the owner is initialized.
-
 	if newResolvedTs < prevResolvedTs {
 		newResolvedTs = prevResolvedTs
 	}
