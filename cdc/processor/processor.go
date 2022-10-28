@@ -68,7 +68,7 @@ type processor struct {
 	lastSchemaTs  model.Ts
 
 	filter        filter.Filter
-	mounter       entry.Mounter
+	mounter       entry.MounterGroup
 	sinkV1        sinkv1.Sink
 	sinkV2Factory *factory.SinkFactory
 	redoManager   redo.LogManager
@@ -678,13 +678,16 @@ func (p *processor) lazyInitImpl(ctx cdcContext.Context) error {
 
 	stdCtx := contextutil.PutChangefeedIDInCtx(ctx, p.changefeedID)
 	stdCtx = contextutil.PutRoleInCtx(stdCtx, util.RoleProcessor)
-
-	p.mounter = entry.NewMounter(p.schemaStorage,
-		p.changefeedID,
-		contextutil.TimezoneFromCtx(ctx),
-		p.filter,
+	tz := contextutil.TimezoneFromCtx(ctx)
+	p.mounter = entry.NewMounterGroup(p.schemaStorage,
+		p.changefeed.Info.Config.Mounter.WorkerNum,
 		p.changefeed.Info.Config.EnableOldValue,
-	)
+		p.filter, tz, p.changefeedID)
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+		p.sendError(p.mounter.Run(ctx))
+	}()
 
 	start := time.Now()
 	conf := config.GetGlobalServerConfig()

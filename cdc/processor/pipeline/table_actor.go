@@ -64,7 +64,7 @@ type tableActor struct {
 	// all goroutines in tableActor should be spawned from this wg
 	wg *errgroup.Group
 	// backend mounter
-	mounter entry.Mounter
+	mounter entry.MounterGroup
 	// backend tableSink
 	tableSinkV1 sinkv1.Sink
 	tableSinkV2 sinkv2.TableSink
@@ -110,7 +110,7 @@ type tableActor struct {
 func NewTableActor(
 	cdcCtx cdcContext.Context,
 	up *upstream.Upstream,
-	mounter entry.Mounter,
+	mounter entry.MounterGroup,
 	tableID model.TableID,
 	tableName string,
 	replicaInfo *model.TableReplicaInfo,

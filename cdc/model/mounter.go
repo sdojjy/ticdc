@@ -14,6 +14,7 @@
 package model
 
 import (
+	"context"
 	"math"
 
 	"github.com/pingcap/log"
@@ -40,6 +41,8 @@ type PolymorphicEvent struct {
 
 	RawKV *RawKVEntry
 	Row   *RowChangedEvent
+
+	finished chan struct{}
 }
 
 // NewEmptyPolymorphicEvent creates a new empty PolymorphicEvent.
@@ -49,6 +52,29 @@ func NewEmptyPolymorphicEvent(ts uint64) *PolymorphicEvent {
 		RawKV: &RawKVEntry{},
 		Row:   &RowChangedEvent{},
 	}
+}
+
+func (e *PolymorphicEvent) SetUpFinishedCh() {
+	if e.finished == nil {
+		e.finished = make(chan struct{})
+	}
+}
+
+func (e *PolymorphicEvent) MarkFinished() {
+	if e.finished != nil {
+		close(e.finished)
+	}
+}
+
+func (e *PolymorphicEvent) WaitFinished(ctx context.Context) error {
+	if e.finished != nil {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-e.finished:
+		}
+	}
+	return nil
 }
 
 // NewPolymorphicEvent creates a new PolymorphicEvent with a raw KV.

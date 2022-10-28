@@ -71,7 +71,7 @@ type sorterNode struct {
 	// for per-table flow control
 	flowController tableFlowController
 
-	mounter entry.Mounter
+	mounter entry.MounterGroup
 
 	eg     *errgroup.Group
 	cancel context.CancelFunc
@@ -107,7 +107,7 @@ type sorterNode struct {
 
 func newSorterNode(
 	tableName string, tableID model.TableID, startTs model.Ts,
-	flowController tableFlowController, mounter entry.Mounter,
+	flowController tableFlowController, mounter entry.MounterGroup,
 	state *tablepb.TableState, changefeed model.ChangeFeedID, redoLogEnabled bool,
 	pdClient pd.Client,
 	pdClock pdutil.Clock,
@@ -265,20 +265,30 @@ func (n *sorterNode) start(
 		n.state.Store(tablepb.TableStateReplicating)
 		eventSorter.EmitStartTs(stdCtx, startTs)
 
+		events := make([]*model.PolymorphicEvent, defaultBatchReadSize)
 		for {
 			// We must call `sorter.Output` before receiving resolved events.
 			// Skip calling `sorter.Output` and caching output channel may fail
 			// to receive any events.
-			output := eventSorter.Output()
 			select {
 			case <-stdCtx.Done():
 				return nil
-			case msg, ok := <-output:
-				if !ok {
-					// sorter output channel closed
-					return nil
+			default:
+			}
+			index, ok := n.batchRead(stdCtx, eventSorter, events)
+			if !ok {
+				// sorter output channel closed
+				return nil
+			}
+			for i := 0; i < index; i++ {
+				e := events[i]
+				e.SetUpFinishedCh()
+				if err := n.mounter.AddEvent(stdCtx, e); err != nil {
+					return errors.Trace(err)
 				}
-
+			}
+			for i := 0; i < index; i++ {
+				msg := events[i]
 				if msg == nil || msg.RawKV == nil {
 					log.Panic("unexpected empty msg", zap.Any("msg", msg))
 				}
@@ -292,7 +302,7 @@ func (n *sorterNode) start(
 
 				if msg.RawKV.OpType != model.OpTypeResolved {
 					atomic.AddInt64(&n.remainEvents, -1)
-					ignored, err := n.mounter.DecodeEvent(ctx, msg)
+					err := msg.WaitFinished(ctx)
 					if err != nil {
 						log.Error("got an error from mounter, sorter will stop.",
 							zap.String("namespace", n.changefeed.Namespace),
@@ -302,9 +312,6 @@ func (n *sorterNode) start(
 							zap.Error(err))
 						ctx.Throw(err)
 						return errors.Trace(err)
-					}
-					if ignored {
-						continue
 					}
 					commitTs := msg.CRTs
 					// We interpolate a resolved-ts if none has been sent for some time.
@@ -375,6 +382,44 @@ func (n *sorterNode) start(
 	})
 	n.sorter = eventSorter
 	return nil
+}
+
+const (
+	// the default value is determined by metrics measurement
+	defaultBatchReadSize = 256
+)
+
+func (n *sorterNode) batchRead(ctx context.Context, source sorter.EventSorter, result []*model.PolymorphicEvent) (int, bool) {
+	idx := 0
+	for {
+		// We must call `sorter.Output` before receiving resolved events.
+		// Skip calling `sorter.Output` and caching output channel may fail
+		// to receive any events.
+		output := source.Output()
+		select {
+		case <-ctx.Done():
+			return idx, false
+		case event, ok := <-output:
+			if !ok {
+				return idx, false
+			}
+			if event == nil || event.RawKV == nil {
+				log.Panic("unexpected empty event",
+					zap.String("namespace", n.changefeed.Namespace),
+					zap.String("changefeed", n.changefeed.ID),
+					zap.Int64("tableID", n.tableID),
+					zap.String("tableName", n.tableName),
+					zap.Any("event", event))
+			}
+			result[idx] = event
+			idx++
+			if idx == defaultBatchReadSize {
+				return idx, true
+			}
+		default:
+			return idx, true
+		}
+	}
 }
 
 // handleRawEvent process the raw kv event,send it to sorter
