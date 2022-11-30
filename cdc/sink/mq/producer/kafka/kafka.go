@@ -31,6 +31,7 @@ import (
 	"github.com/pingcap/tiflow/cdc/sink/codec/common"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/sink/kafka"
+	"github.com/pingcap/tiflow/pkg/sink/kafka/metadata"
 	"github.com/pingcap/tiflow/pkg/util"
 	"go.uber.org/zap"
 )
@@ -322,7 +323,7 @@ func NewKafkaSaramaProducer(
 	ctx context.Context,
 	client sarama.Client,
 	admin kafka.ClusterAdminClient,
-	config *Config,
+	config *metadata.Config,
 	saramaConfig *sarama.Config,
 	errCh chan error,
 	changefeedID model.ChangeFeedID,
@@ -396,7 +397,7 @@ func kafkaClientID(role, captureAddr string,
 
 // AdjustConfig adjust the `Config` and `sarama.Config` by condition.
 func AdjustConfig(
-	admin kafka.ClusterAdminClient, config *Config, saramaConfig *sarama.Config, topic string,
+	admin kafka.ClusterAdminClient, config *metadata.Config, saramaConfig *sarama.Config, topic string,
 ) error {
 	topics, err := admin.ListTopics()
 	if err != nil {

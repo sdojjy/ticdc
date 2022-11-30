@@ -26,6 +26,7 @@ import (
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/sink/codec/common"
 	"github.com/pingcap/tiflow/pkg/sink/kafka"
+	"github.com/pingcap/tiflow/pkg/sink/kafka/metadata"
 	"github.com/pingcap/tiflow/pkg/util"
 	"github.com/stretchr/testify/require"
 )
@@ -99,7 +100,7 @@ func TestNewSaramaProducer(t *testing.T) {
 	}
 
 	errCh := make(chan error, 1)
-	config := NewConfig()
+	config := metadata.NewConfig()
 	// Because the sarama mock broker is not compatible with version larger than 1.0.0
 	// We use a smaller version in the following producer tests.
 	// Ref: https://github.com/Shopify/sarama/blob/89707055369768913defac030c15cf08e9e57925/async_producer_test.go#L1445-L1447
@@ -114,7 +115,7 @@ func TestNewSaramaProducer(t *testing.T) {
 	}()
 
 	ctx = contextutil.PutRoleInCtx(ctx, util.RoleTester)
-	saramaConfig, err := NewSaramaConfig(ctx, config)
+	saramaConfig, err := metadata.NewSaramaConfig(ctx, config)
 	require.Nil(t, err)
 	saramaConfig.Producer.Flush.MaxMessages = 1
 	client, err := sarama.NewClient(config.BrokerEndpoints, saramaConfig)
@@ -200,13 +201,13 @@ func TestAdjustConfigTopicNotExist(t *testing.T) {
 		_ = adminClient.Close()
 	}()
 
-	config := NewConfig()
+	config := metadata.NewConfig()
 	config.BrokerEndpoints = []string{"127.0.0.1:9092"}
 
 	// When the topic does not exist, use the broker's configuration to create the topic.
 	// topic not exist, `max-message-bytes` = `message.max.bytes`
 	config.MaxMessageBytes = adminClient.GetBrokerMessageMaxBytes()
-	saramaConfig, err := NewSaramaConfig(context.Background(), config)
+	saramaConfig, err := metadata.NewSaramaConfig(context.Background(), config)
 	require.Nil(t, err)
 
 	err = AdjustConfig(adminClient, config, saramaConfig, "create-random1")
@@ -216,7 +217,7 @@ func TestAdjustConfigTopicNotExist(t *testing.T) {
 
 	// topic not exist, `max-message-bytes` > `message.max.bytes`
 	config.MaxMessageBytes = adminClient.GetBrokerMessageMaxBytes() + 1
-	saramaConfig, err = NewSaramaConfig(context.Background(), config)
+	saramaConfig, err = metadata.NewSaramaConfig(context.Background(), config)
 	require.Nil(t, err)
 	err = AdjustConfig(adminClient, config, saramaConfig, "create-random2")
 	require.Nil(t, err)
@@ -225,7 +226,7 @@ func TestAdjustConfigTopicNotExist(t *testing.T) {
 
 	// topic not exist, `max-message-bytes` < `message.max.bytes`
 	config.MaxMessageBytes = adminClient.GetBrokerMessageMaxBytes() - 1
-	saramaConfig, err = NewSaramaConfig(context.Background(), config)
+	saramaConfig, err = metadata.NewSaramaConfig(context.Background(), config)
 	require.Nil(t, err)
 	err = AdjustConfig(adminClient, config, saramaConfig, "create-random3")
 	require.Nil(t, err)
@@ -239,12 +240,12 @@ func TestAdjustConfigTopicExist(t *testing.T) {
 		_ = adminClient.Close()
 	}()
 
-	config := NewConfig()
+	config := metadata.NewConfig()
 	config.BrokerEndpoints = []string{"127.0.0.1:9092"}
 
 	// topic exists, `max-message-bytes` = `max.message.bytes`.
 	config.MaxMessageBytes = adminClient.GetTopicMaxMessageBytes()
-	saramaConfig, err := NewSaramaConfig(context.Background(), config)
+	saramaConfig, err := metadata.NewSaramaConfig(context.Background(), config)
 	require.Nil(t, err)
 
 	err = AdjustConfig(adminClient, config, saramaConfig, adminClient.GetDefaultMockTopicName())
@@ -255,7 +256,7 @@ func TestAdjustConfigTopicExist(t *testing.T) {
 
 	// topic exists, `max-message-bytes` > `max.message.bytes`
 	config.MaxMessageBytes = adminClient.GetTopicMaxMessageBytes() + 1
-	saramaConfig, err = NewSaramaConfig(context.Background(), config)
+	saramaConfig, err = metadata.NewSaramaConfig(context.Background(), config)
 	require.Nil(t, err)
 
 	err = AdjustConfig(adminClient, config, saramaConfig, adminClient.GetDefaultMockTopicName())
@@ -266,7 +267,7 @@ func TestAdjustConfigTopicExist(t *testing.T) {
 
 	// topic exists, `max-message-bytes` < `max.message.bytes`
 	config.MaxMessageBytes = adminClient.GetTopicMaxMessageBytes() - 1
-	saramaConfig, err = NewSaramaConfig(context.Background(), config)
+	saramaConfig, err = metadata.NewSaramaConfig(context.Background(), config)
 	require.Nil(t, err)
 
 	err = AdjustConfig(adminClient, config, saramaConfig, adminClient.GetDefaultMockTopicName())
@@ -287,7 +288,7 @@ func TestAdjustConfigTopicExist(t *testing.T) {
 	require.Nil(t, err)
 
 	config.MaxMessageBytes = adminClient.GetBrokerMessageMaxBytes() - 1
-	saramaConfig, err = NewSaramaConfig(context.Background(), config)
+	saramaConfig, err = metadata.NewSaramaConfig(context.Background(), config)
 	require.Nil(t, err)
 
 	err = AdjustConfig(adminClient, config, saramaConfig, topicName)
@@ -300,7 +301,7 @@ func TestAdjustConfigTopicExist(t *testing.T) {
 	// When the topic exists, but the topic doesn't have `max.message.bytes`
 	// `max-message-bytes` > `message.max.bytes`
 	config.MaxMessageBytes = adminClient.GetBrokerMessageMaxBytes() + 1
-	saramaConfig, err = NewSaramaConfig(context.Background(), config)
+	saramaConfig, err = metadata.NewSaramaConfig(context.Background(), config)
 	require.Nil(t, err)
 
 	err = AdjustConfig(adminClient, config, saramaConfig, topicName)
@@ -315,12 +316,12 @@ func TestAdjustConfigMinInsyncReplicas(t *testing.T) {
 		_ = adminClient.Close()
 	}()
 
-	config := NewConfig()
+	config := metadata.NewConfig()
 	config.BrokerEndpoints = []string{"127.0.0.1:9092"}
 
 	// Report an error if the replication-factor is less than min.insync.replicas
 	// when the topic does not exist.
-	saramaConfig, err := NewSaramaConfig(context.Background(), config)
+	saramaConfig, err := metadata.NewSaramaConfig(context.Background(), config)
 	require.Nil(t, err)
 	adminClient.SetMinInsyncReplicas("2")
 	err = AdjustConfig(adminClient, config, saramaConfig, "create-new-fail-invalid-min-insync-replicas")
@@ -340,7 +341,7 @@ func TestAdjustConfigMinInsyncReplicas(t *testing.T) {
 
 	// Report an error if the replication-factor is less than min.insync.replicas
 	// when the topic does exist.
-	saramaConfig, err = NewSaramaConfig(context.Background(), config)
+	saramaConfig, err = metadata.NewSaramaConfig(context.Background(), config)
 	require.Nil(t, err)
 
 	// topic exist, but `min.insync.replicas` not found in topic and broker configuration
@@ -363,9 +364,9 @@ func TestAdjustConfigMinInsyncReplicas(t *testing.T) {
 }
 
 func TestCreateProducerFailed(t *testing.T) {
-	config := NewConfig()
+	config := metadata.NewConfig()
 	config.Version = "invalid"
-	saramaConfig, err := NewSaramaConfig(context.Background(), config)
+	saramaConfig, err := metadata.NewSaramaConfig(context.Background(), config)
 	require.Regexp(t, "invalid version.*", errors.Cause(err))
 	require.Nil(t, saramaConfig)
 }
@@ -384,7 +385,7 @@ func TestProducerSendMessageFailed(t *testing.T) {
 	// Response for `sarama.NewClient`
 	leader.Returns(metadataResponse)
 
-	config := NewConfig()
+	config := metadata.NewConfig()
 	// Because the sarama mock broker is not compatible with version larger than 1.0.0
 	// We use a smaller version in the following producer tests.
 	// Ref: https://github.com/Shopify/sarama/blob/89707055369768913defac030c15cf08e9e57925/async_producer_test.go#L1445-L1447
@@ -400,7 +401,7 @@ func TestProducerSendMessageFailed(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	ctx = contextutil.PutRoleInCtx(ctx, util.RoleTester)
-	saramaConfig, err := NewSaramaConfig(context.Background(), config)
+	saramaConfig, err := metadata.NewSaramaConfig(context.Background(), config)
 	require.Nil(t, err)
 	saramaConfig.Producer.Flush.MaxMessages = 1
 	saramaConfig.Producer.Retry.Max = 2
@@ -471,7 +472,7 @@ func TestProducerDoubleClose(t *testing.T) {
 	// Response for `sarama.NewClient`
 	leader.Returns(metadataResponse)
 
-	config := NewConfig()
+	config := metadata.NewConfig()
 	// Because the sarama mock broker is not compatible with version larger than 1.0.0
 	// We use a smaller version in the following producer tests.
 	// Ref: https://github.com/Shopify/sarama/blob/89707055369768913defac030c15cf08e9e57925/async_producer_test.go#L1445-L1447
@@ -487,7 +488,7 @@ func TestProducerDoubleClose(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	ctx = contextutil.PutRoleInCtx(ctx, util.RoleTester)
-	saramaConfig, err := NewSaramaConfig(context.Background(), config)
+	saramaConfig, err := metadata.NewSaramaConfig(context.Background(), config)
 	require.Nil(t, err)
 	client, err := sarama.NewClient(config.BrokerEndpoints, saramaConfig)
 	require.Nil(t, err)

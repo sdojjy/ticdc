@@ -21,9 +21,9 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/pingcap/tiflow/cdc/sink/codec/common"
-	kafkav1 "github.com/pingcap/tiflow/cdc/sink/mq/producer/kafka"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/sink/kafka"
+	kafkav1 "github.com/pingcap/tiflow/pkg/sink/kafka/metadata"
 	"github.com/stretchr/testify/require"
 )
 

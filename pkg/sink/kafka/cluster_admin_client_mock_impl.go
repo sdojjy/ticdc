@@ -18,6 +18,7 @@ import (
 	"strconv"
 
 	"github.com/Shopify/sarama"
+	"github.com/pingcap/tiflow/pkg/sink/kafka/metadata"
 )
 
 const (
@@ -97,10 +98,13 @@ func NewClusterAdminClientMockImpl() *ClusterAdminClientMockImpl {
 }
 
 // ListTopics returns all topics directly.
-func (c *ClusterAdminClientMockImpl) ListTopics() (map[string]sarama.TopicDetail, error) {
-	topicsDetailsMap := make(map[string]sarama.TopicDetail)
+func (c *ClusterAdminClientMockImpl) ListTopics() (map[string]metadata.TopicDetail, error) {
+	topicsDetailsMap := make(map[string]metadata.TopicDetail)
 	for topic, detail := range c.topics {
-		topicsDetailsMap[topic] = detail.TopicDetail
+		topicsDetailsMap[topic] = metadata.TopicDetail{
+			NumPartitions:     detail.NumPartitions,
+			ReplicationFactor: detail.ReplicationFactor,
+		}
 	}
 	return topicsDetailsMap, nil
 }

@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package kafka
+package metadata
 
 import (
 	"context"
@@ -25,6 +25,7 @@ import (
 	"github.com/pingcap/errors"
 	"github.com/pingcap/tiflow/cdc/contextutil"
 	"github.com/pingcap/tiflow/cdc/sink/codec/common"
+	kafka2 "github.com/pingcap/tiflow/cdc/sink/mq/producer/kafka"
 	"github.com/pingcap/tiflow/pkg/config"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/security"
@@ -198,9 +199,9 @@ func TestSetPartitionNum(t *testing.T) {
 }
 
 func TestConfigurationCombinations(t *testing.T) {
-	NewAdminClientImpl = kafka.NewMockAdminClient
+	kafka2.NewAdminClientImpl = kafka.NewMockAdminClient
 	defer func() {
-		NewAdminClientImpl = kafka.NewSaramaAdminClient
+		kafka2.NewAdminClientImpl = kafka.NewSaramaAdminClient
 	}()
 
 	combinations := []struct {
@@ -396,13 +397,13 @@ func TestConfigurationCombinations(t *testing.T) {
 		saramaConfig, err := NewSaramaConfig(context.Background(), baseConfig)
 		require.Nil(t, err)
 
-		adminClient, err := NewAdminClientImpl([]string{sinkURI.Host}, saramaConfig)
+		adminClient, err := kafka2.NewAdminClientImpl([]string{sinkURI.Host}, saramaConfig)
 		require.Nil(t, err)
 
 		topic, ok := a.uriParams[0].(string)
 		require.True(t, ok)
 		require.NotEqual(t, "", topic)
-		err = AdjustConfig(adminClient, baseConfig, saramaConfig, topic)
+		err = kafka2.AdjustConfig(adminClient, baseConfig, saramaConfig, topic)
 		require.Nil(t, err)
 
 		encoderConfig := common.NewConfig(config.ProtocolOpen)
