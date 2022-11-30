@@ -19,3 +19,8 @@ type TopicDetail struct {
 	ReplicaAssignment map[int32][]int32
 	ConfigEntries     map[string]*string
 }
+
+type Broker struct {
+	ID   int32
+	Addr string
+}

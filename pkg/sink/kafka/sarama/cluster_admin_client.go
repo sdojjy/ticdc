@@ -64,8 +64,19 @@ func (s *saramaClusterAdmin) ListTopics() (map[string]metadata.TopicDetail, erro
 }
 
 // DescribeCluster gets information about the nodes in the cluster
-func (s *saramaClusterAdmin) DescribeCluster() (brokers []*sarama.Broker, controllerID int32, err error) {
-
+func (s *saramaClusterAdmin) DescribeCluster() ([]*metadata.Broker, int32, error) {
+	brokers, controller, err := s.admin.DescribeCluster()
+	if err != nil {
+		return nil, 0, err
+	}
+	retBrokers := make([]*metadata.Broker, len(brokers), 0)
+	for _, broker := range brokers {
+		retBrokers = append(retBrokers, &metadata.Broker{
+			ID:   broker.ID(),
+			Addr: broker.Addr(),
+		})
+	}
+	return retBrokers, controller, nil
 }
 
 // DescribeConfig gets the configuration for the specified resources.
