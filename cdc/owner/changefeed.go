@@ -208,6 +208,7 @@ func (c *changefeed) checkStaleCheckpointTs(ctx cdcContext.Context, checkpointTs
 }
 
 func (c *changefeed) tick(ctx cdcContext.Context, state *orchestrator.ChangefeedReactorState, captures map[model.CaptureID]*model.CaptureInfo) error {
+	startTime := time.Now()
 	c.state = state
 	adminJobPending := c.feedStateManager.Tick(state)
 	checkpointTs := c.state.Info.GetCheckpointTs(c.state.Status)
@@ -233,7 +234,14 @@ func (c *changefeed) tick(ctx cdcContext.Context, state *orchestrator.Changefeed
 	if err := c.initialize(ctx); err != nil {
 		return errors.Trace(err)
 	}
+	costTime := time.Since(startTime)
+	if costTime > schedulerLogsWarnDuration {
+		log.Warn("initialize tick took too long",
+			zap.String("namespace", c.id.Namespace),
+			zap.String("changefeed", c.id.ID), zap.Duration("duration", costTime))
+	}
 
+	startTime = time.Now()
 	select {
 	case err := <-c.errCh:
 		return errors.Trace(err)
@@ -267,11 +275,17 @@ func (c *changefeed) tick(ctx cdcContext.Context, state *orchestrator.Changefeed
 			zap.Uint64("barrierTs", barrierTs), zap.Uint64("checkpointTs", checkpointTs))
 		return nil
 	}
+	costTime = time.Since(startTime)
+	if costTime > schedulerLogsWarnDuration {
+		log.Warn("barrier tick took too long",
+			zap.String("namespace", c.id.Namespace),
+			zap.String("changefeed", c.id.ID), zap.Duration("duration", costTime))
+	}
 
-	startTime := time.Now()
+	startTime = time.Now()
 	newCheckpointTs, newResolvedTs, err := c.scheduler.Tick(
 		ctx, c.state.Status.CheckpointTs, c.schema.AllPhysicalTables(), captures)
-	costTime := time.Since(startTime)
+	costTime = time.Since(startTime)
 	if costTime > schedulerLogsWarnDuration {
 		log.Warn("scheduler tick took too long",
 			zap.String("namespace", c.id.Namespace),
@@ -280,7 +294,7 @@ func (c *changefeed) tick(ctx cdcContext.Context, state *orchestrator.Changefeed
 	if err != nil {
 		return errors.Trace(err)
 	}
-
+	startTime = time.Now()
 	pdTime, _ := c.upstream.PDClock.CurrentTime()
 	currentTs := oracle.GetPhysical(pdTime)
 
@@ -299,6 +313,12 @@ func (c *changefeed) tick(ctx cdcContext.Context, state *orchestrator.Changefeed
 		// We should keep the metrics updated even if the scheduler cannot
 		// advance the watermarks for now.
 		c.updateMetrics(currentTs, c.state.Status.CheckpointTs, c.state.Status.ResolvedTs)
+	}
+	costTime = time.Since(startTime)
+	if costTime > schedulerLogsWarnDuration {
+		log.Warn("updateMetrics tick took too long",
+			zap.String("namespace", c.id.Namespace),
+			zap.String("changefeed", c.id.ID), zap.Duration("duration", costTime))
 	}
 	return nil
 }
