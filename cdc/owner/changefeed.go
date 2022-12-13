@@ -152,20 +152,6 @@ func newChangefeed4Test(
 
 func (c *changefeed) Tick(ctx cdcContext.Context, state *orchestrator.ChangefeedReactorState, captures map[model.CaptureID]*model.CaptureInfo) {
 	startTime := time.Now()
-	if err := c.upstream.Error(); err != nil {
-		c.handleErr(ctx, err)
-		return
-	}
-	if c.upstream.IsClosed() {
-		log.Panic("upstream is closed",
-			zap.Uint64("upstreamID", c.upstream.ID),
-			zap.String("namespace", c.id.Namespace),
-			zap.String("changefeed", c.id.ID))
-	}
-	// skip this tick
-	if !c.upstream.IsNormal() {
-		return
-	}
 	ctx = cdcContext.WithErrorHandler(ctx, func(err error) error {
 		c.errCh <- errors.Trace(err)
 		return nil

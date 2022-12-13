@@ -24,7 +24,6 @@ import (
 	"github.com/pingcap/tiflow/pkg/config"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/etcd"
-	"github.com/pingcap/tiflow/pkg/orchestrator"
 	"github.com/pingcap/tiflow/pkg/security"
 	pd "github.com/tikv/pd/client"
 	"go.uber.org/zap"
@@ -153,6 +152,9 @@ func (m *Manager) AddUpstream(upstreamID model.UpstreamID,
 
 // Get gets a upstream by upstreamID.
 func (m *Manager) Get(upstreamID uint64) (*Upstream, bool) {
+	if upstreamID == m.defaultUpstream.ID {
+		return m.defaultUpstream, true
+	}
 	v, ok := m.ups.Load(upstreamID)
 	if !ok {
 		return nil, false
@@ -170,63 +172,4 @@ func (m *Manager) Close() {
 		m.ups.Delete(k)
 		return true
 	})
-}
-
-// Tick checks and frees upstream that have not been used
-// for a long time to save resources.
-func (m *Manager) Tick(ctx context.Context,
-	globalState *orchestrator.GlobalReactorState,
-) error {
-	if time.Since(m.lastTickTime) < tickInterval {
-		return nil
-	}
-
-	activeUpstreams := make(map[uint64]struct{})
-	for _, cf := range globalState.Changefeeds {
-		activeUpstreams[cf.Info.UpstreamID] = struct{}{}
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	var err error
-	m.ups.Range(func(k, v interface{}) bool {
-		select {
-		case <-ctx.Done():
-			err = ctx.Err()
-			return false
-		default:
-		}
-		id := k.(uint64)
-
-		up := v.(*Upstream)
-		if up.isDefaultUpstream {
-			return true
-		}
-		// remove failed upstream
-		if up.Error() != nil {
-			log.Warn("upstream init failed, remove it from manager",
-				zap.Uint64("id", up.ID),
-				zap.Error(up.Error()))
-			go up.Close()
-			m.ups.Delete(id)
-			return true
-		}
-		_, ok := activeUpstreams[id]
-		if ok {
-			return true
-		}
-
-		up.trySetIdleTime()
-		log.Info("no active changefeed found, try to close upstream",
-			zap.Uint64("id", up.ID))
-		if up.shouldClose() {
-			log.Info("upstream should be closed ,remove it from manager",
-				zap.Uint64("id", up.ID))
-			go up.Close()
-			m.ups.Delete(id)
-		}
-		return true
-	})
-	m.lastTickTime = time.Now()
-	return err
 }

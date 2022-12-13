@@ -174,9 +174,9 @@ func (o *ownerImpl) Tick(stdCtx context.Context, rawState orchestrator.ReactorSt
 	// initializing.
 	//
 	// See more gc doc.
-	if err = o.updateGCSafepoint(stdCtx, state); err != nil {
-		return nil, errors.Trace(err)
-	}
+	//if err = o.updateGCSafepoint(stdCtx, state); err != nil {
+	//	return nil, errors.Trace(err)
+	//}
 
 	// Tick all changefeeds.
 	ctx := stdCtx.(cdcContext.Context)
@@ -228,10 +228,6 @@ func (o *ownerImpl) Tick(stdCtx context.Context, rawState orchestrator.ReactorSt
 			cfReactor.Close(ctx)
 		}
 		return state, cerror.ErrReactorFinished.GenWithStackByArgs()
-	}
-	// close upstream
-	if err := o.upstreamManager.Tick(stdCtx, state); err != nil {
-		return state, errors.Trace(err)
 	}
 	return state, nil
 }
