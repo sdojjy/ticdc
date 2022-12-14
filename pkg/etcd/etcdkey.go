@@ -101,12 +101,12 @@ type CDCKey struct {
 
 // BaseKey is the common prefix of the keys with cluster id in CDC
 func BaseKey(clusterID string) string {
-	return "/tidb/cdc"
+	return "/tidb/cdc/default"
 }
 
 // NamespacedPrefix returns the etcd prefix of changefeed data
 func NamespacedPrefix(clusterID, namespace string) string {
-	return "/tidb/cdc"
+	return "/tidb/cdc/default/default"
 }
 
 // Parse parses the given etcd key
@@ -114,9 +114,9 @@ func (k *CDCKey) Parse(clusterID, key string) error {
 	if !strings.HasPrefix(key, BaseKey(clusterID)) {
 		return cerror.ErrInvalidEtcdKey.GenWithStackByArgs(key)
 	}
-	key = key[len("/tidb/cdc"):]
+	key = key[len("/tidb/cdc/default"):]
 	//parts := strings.Split(key, "/")
-	k.ClusterID = "defauult"
+	k.ClusterID = "default"
 	//key = key[len(k.ClusterID)+1:]
 	if strings.HasPrefix(key, metaPrefix) {
 		key = key[len(metaPrefix):]
@@ -140,7 +140,7 @@ func (k *CDCKey) Parse(clusterID, key string) error {
 		}
 	} else {
 		//namespace := parts[2]
-		//key = key[len(namespace)+1:]
+		key = key[len("default")+1:]
 		k.Namespace = "default"
 		switch {
 		case strings.HasPrefix(key, ChangefeedInfoKey):
