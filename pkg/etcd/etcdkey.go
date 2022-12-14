@@ -14,7 +14,6 @@
 package etcd
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/pingcap/log"
@@ -88,12 +87,14 @@ type CDCKey struct {
 
 // BaseKey is the common prefix of the keys with cluster id in CDC
 func BaseKey(clusterID string) string {
-	return fmt.Sprintf("/tidb/cdc/%s", clusterID)
+	return "/tidb/cdc"
+	//return fmt.Sprintf("/tidb/cdc/%s", clusterID)
 }
 
 // NamespacedPrefix returns the etcd prefix of changefeed data
 func NamespacedPrefix(clusterID, namespace string) string {
-	return BaseKey(clusterID) + "/" + namespace
+	//return BaseKey(clusterID) + "/" + namespace
+	return "/tidb/cdc"
 }
 
 // Parse parses the given etcd key
@@ -103,8 +104,8 @@ func (k *CDCKey) Parse(clusterID, key string) error {
 	}
 	key = key[len("/tidb/cdc"):]
 	parts := strings.Split(key, "/")
-	k.ClusterID = parts[1]
-	key = key[len(k.ClusterID)+1:]
+	//k.ClusterID = parts[1]
+	//key = key[len(k.ClusterID)+1:]
 	if strings.HasPrefix(key, metaPrefix) {
 		key = key[len(metaPrefix):]
 		switch {
