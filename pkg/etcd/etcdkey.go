@@ -103,8 +103,8 @@ func (k *CDCKey) Parse(clusterID, key string) error {
 		return cerror.ErrInvalidEtcdKey.GenWithStackByArgs(key)
 	}
 	key = key[len("/tidb/cdc"):]
-	parts := strings.Split(key, "/")
-	//k.ClusterID = parts[1]
+	//parts := strings.Split(key, "/")
+	k.ClusterID = "default"
 	//key = key[len(k.ClusterID)+1:]
 	if strings.HasPrefix(key, metaPrefix) {
 		key = key[len(metaPrefix):]
@@ -125,14 +125,14 @@ func (k *CDCKey) Parse(clusterID, key string) error {
 			return cerror.ErrInvalidEtcdKey.GenWithStackByArgs(key)
 		}
 	} else {
-		namespace := parts[2]
-		key = key[len(namespace)+1:]
+		//namespace := parts[2]
+		//key = key[len(namespace)+1:]
 		switch {
 		case strings.HasPrefix(key, changefeedInfoKey):
 			k.Tp = CDCKeyTypeChangefeedInfo
 			k.CaptureID = ""
 			k.ChangefeedID = model.ChangeFeedID{
-				Namespace: namespace,
+				Namespace: "default",
 				ID:        key[len(changefeedInfoKey)+1:],
 			}
 			k.OwnerLeaseID = ""
@@ -140,7 +140,7 @@ func (k *CDCKey) Parse(clusterID, key string) error {
 			k.Tp = CDCKeyTypeChangeFeedStatus
 			k.CaptureID = ""
 			k.ChangefeedID = model.ChangeFeedID{
-				Namespace: namespace,
+				Namespace: "default",
 				ID:        key[len(jobKey)+1:],
 			}
 			k.OwnerLeaseID = ""
@@ -152,7 +152,7 @@ func (k *CDCKey) Parse(clusterID, key string) error {
 			k.Tp = CDCKeyTypeTaskPosition
 			k.CaptureID = splitKey[0]
 			k.ChangefeedID = model.ChangeFeedID{
-				Namespace: namespace,
+				Namespace: "default",
 				ID:        splitKey[1],
 			}
 			k.OwnerLeaseID = ""
