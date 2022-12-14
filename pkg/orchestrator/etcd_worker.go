@@ -132,16 +132,16 @@ func (worker *EtcdWorker) Run(ctx context.Context, session *concurrency.Session,
 	defer worker.cleanUp()
 
 	// migrate data here
-	err := worker.checkAndMigrateMetaData(ctx, role)
-	if err != nil {
-		return errors.Trace(err)
-	}
+	//err := worker.checkAndMigrateMetaData(ctx, role)
+	//if err != nil {
+	//	return errors.Trace(err)
+	//}
 	// migration is done, cdc server can serve http now
 	worker.migrator.MarkMigrateDone()
 
 	worker.initMetrics()
 
-	err = worker.syncRawState(ctx)
+	err := worker.syncRawState(ctx)
 	if err != nil {
 		return errors.Trace(err)
 	}
