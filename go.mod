@@ -44,6 +44,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.11.0
 	github.com/integralist/go-findroot v0.0.0-20160518114804-ac90681525dc
 	github.com/jarcoal/httpmock v1.2.0
+	github.com/jcmturner/gokrb5/v8 v8.4.3
 	github.com/jmoiron/sqlx v1.3.3
 	github.com/kami-zh/go-capturer v0.0.0-20171211120116-e492ea43421d
 	github.com/labstack/gommon v0.3.0
@@ -64,6 +65,7 @@ require (
 	github.com/prometheus/client_model v0.2.0
 	github.com/r3labs/diff v1.1.0
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
+	github.com/segmentio/kafka-go v0.4.38
 	github.com/shopspring/decimal v1.3.0
 	github.com/soheilhy/cmux v0.1.5
 	github.com/spf13/cobra v1.6.1
@@ -79,7 +81,7 @@ require (
 	github.com/tinylib/msgp v1.1.6
 	github.com/uber-go/atomic v1.4.0
 	github.com/vmihailenco/msgpack/v5 v5.3.5
-	github.com/xdg/scram v1.0.3
+	github.com/xdg/scram v1.0.5
 	go.etcd.io/etcd/api/v3 v3.5.4
 	go.etcd.io/etcd/client/pkg/v3 v3.5.4
 	go.etcd.io/etcd/client/v3 v3.5.4
@@ -178,7 +180,6 @@ require (
 	github.com/jcmturner/aescts/v2 v2.0.0 // indirect
 	github.com/jcmturner/dnsutils/v2 v2.0.0 // indirect
 	github.com/jcmturner/gofork v1.7.6 // indirect
-	github.com/jcmturner/gokrb5/v8 v8.4.3 // indirect
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
 	github.com/jedib0t/go-pretty/v6 v6.2.2 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
