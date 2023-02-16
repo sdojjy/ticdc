@@ -591,55 +591,55 @@ func (s *mysqlBackend) execDMLWithMaxRetries(pctx context.Context, dmls *prepare
 		})
 
 		err := s.statistics.RecordBatchExecution(func() (int, error) {
-			tx, err := s.db.BeginTx(pctx, nil)
-			if err != nil {
-				return 0, logDMLTxnErr(
-					cerror.WrapError(cerror.ErrMySQLTxnError, err),
-					start, s.changefeed, "BEGIN", dmls.rowCount, dmls.startTs)
-			}
+			//tx, err := s.db.BeginTx(pctx, nil)
+			//if err != nil {
+			//	return 0, logDMLTxnErr(
+			//		cerror.WrapError(cerror.ErrMySQLTxnError, err),
+			//		start, s.changefeed, "BEGIN", dmls.rowCount, dmls.startTs)
+			//}
 
 			for i, query := range dmls.sqls {
 				args := dmls.values[i]
 				log.Debug("exec row", zap.Int("workerID", s.workerID),
 					zap.String("sql", query), zap.Any("args", args))
-				ctx, cancelFunc := context.WithTimeout(pctx, writeTimeout)
-				if _, err := tx.ExecContext(ctx, query, args...); err != nil {
-					err := logDMLTxnErr(
-						cerror.WrapError(cerror.ErrMySQLTxnError, err),
-						start, s.changefeed, query, dmls.rowCount, dmls.startTs)
-					if rbErr := tx.Rollback(); rbErr != nil {
-						if errors.Cause(rbErr) != context.Canceled {
-							log.Warn("failed to rollback txn", zap.Error(rbErr))
-						}
-					}
-					cancelFunc()
-					return 0, err
-				}
-				cancelFunc()
+				//ctx, cancelFunc := context.WithTimeout(pctx, writeTimeout)
+				//if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+				//	err := logDMLTxnErr(
+				//		cerror.WrapError(cerror.ErrMySQLTxnError, err),
+				//		start, s.changefeed, query, dmls.rowCount, dmls.startTs)
+				//	if rbErr := tx.Rollback(); rbErr != nil {
+				//		if errors.Cause(rbErr) != context.Canceled {
+				//			log.Warn("failed to rollback txn", zap.Error(rbErr))
+				//		}
+				//	}
+				//	cancelFunc()
+				//	return 0, err
+				//}
+				//cancelFunc()
 			}
 
 			// we set write source for each txn,
 			// so we can use it to trace the data source
-			if err = s.setWriteSource(pctx, tx); err != nil {
-				err := logDMLTxnErr(
-					cerror.WrapError(cerror.ErrMySQLTxnError, err),
-					start, s.changefeed,
-					fmt.Sprintf("SET SESSION %s = %d", "tidb_cdc_write_source",
-						s.cfg.SourceID),
-					dmls.rowCount, dmls.startTs)
-				if rbErr := tx.Rollback(); rbErr != nil {
-					if errors.Cause(rbErr) != context.Canceled {
-						log.Warn("failed to rollback txn", zap.Error(rbErr))
-					}
-				}
-				return 0, err
-			}
+			//if err = s.setWriteSource(pctx, tx); err != nil {
+			//	err := logDMLTxnErr(
+			//		cerror.WrapError(cerror.ErrMySQLTxnError, err),
+			//		start, s.changefeed,
+			//		fmt.Sprintf("SET SESSION %s = %d", "tidb_cdc_write_source",
+			//			s.cfg.SourceID),
+			//		dmls.rowCount, dmls.startTs)
+			//	if rbErr := tx.Rollback(); rbErr != nil {
+			//		if errors.Cause(rbErr) != context.Canceled {
+			//			log.Warn("failed to rollback txn", zap.Error(rbErr))
+			//		}
+			//	}
+			//	return 0, err
+			//}
 
-			if err = tx.Commit(); err != nil {
-				return 0, logDMLTxnErr(
-					cerror.WrapError(cerror.ErrMySQLTxnError, err),
-					start, s.changefeed, "COMMIT", dmls.rowCount, dmls.startTs)
-			}
+			//if err = tx.Commit(); err != nil {
+			//	return 0, logDMLTxnErr(
+			//		cerror.WrapError(cerror.ErrMySQLTxnError, err),
+			//		start, s.changefeed, "COMMIT", dmls.rowCount, dmls.startTs)
+			//}
 			return dmls.rowCount, nil
 		})
 		if err != nil {
