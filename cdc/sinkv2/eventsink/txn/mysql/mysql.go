@@ -18,6 +18,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"math/rand"
 	"net/url"
 	"time"
 
@@ -75,6 +76,7 @@ func NewMySQLBackends(
 	dbConnFactory pmysql.Factory,
 	statistics *metrics.Statistics,
 ) ([]*mysqlBackend, error) {
+	rand.Seed(time.Now().UTC().UnixNano())
 	changefeedID := contextutil.ChangefeedIDFromCtx(ctx)
 	changefeed := fmt.Sprintf("%s.%s", changefeedID.Namespace, changefeedID.ID)
 
@@ -640,6 +642,8 @@ func (s *mysqlBackend) execDMLWithMaxRetries(pctx context.Context, dmls *prepare
 			//		cerror.WrapError(cerror.ErrMySQLTxnError, err),
 			//		start, s.changefeed, "COMMIT", dmls.rowCount, dmls.startTs)
 			//}
+			sleepms := rand.Int63n(380) + 20
+			time.Sleep(time.Millisecond * time.Duration(sleepms))
 			return dmls.rowCount, nil
 		})
 		if err != nil {
