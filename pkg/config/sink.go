@@ -194,6 +194,36 @@ type ColumnSelector struct {
 	Columns []string `toml:"columns" json:"columns"`
 }
 
+// KafkaConfig represents a kafka sink configuration
+type KafkaConfig struct {
+	PartitionNum int 	`toml:"partition-num" json:"partition-num"`
+	ReplicationFactor int `toml:"replication-factor" json:"replication-factor"`
+	kafka-version
+	max-message-bytes
+	compression
+	kafka-client-id
+	auto-create-topic
+	dial-timeout
+	write-timeout
+	read-timeout
+	required-acks
+	sasl-user
+	sasl-password
+	sasl-mechanism
+	sasl-gssapi-auth-type
+	sasl-gssapi-keytab-path
+	sasl-gssapi-kerberos-config-path
+	sasl-gssapi-service-name
+	sasl-gssapi-user
+	sasl-gssapi-password
+	sasl-gssapi-realm
+	sasl-gssapi-disable-pafxfast
+	enable-tls
+	ca
+	cert
+	key
+}
+
 func (s *SinkConfig) validateAndAdjust(sinkURI *url.URL, enableOldValue bool) error {
 	if err := s.validateAndAdjustSinkURI(sinkURI); err != nil {
 		return err
