@@ -119,6 +119,7 @@ type SinkConfig struct {
 	// which is used to set the `tidb_cdc_write_source` session variable.
 	// Note: This field is only used internally and only used in the MySQL sink.
 	TiDBSourceID uint64 `toml:"-" json:"-"`
+	SafeMode     bool   `toml:"safe-mode" json:"safe-mode"`
 }
 
 // CSVConfig defines a series of configuration items for csv codec.
@@ -194,34 +195,69 @@ type ColumnSelector struct {
 	Columns []string `toml:"columns" json:"columns"`
 }
 
-// KafkaConfig represents a kafka sink configuration
-type KafkaConfig struct {
-	PartitionNum int 	`toml:"partition-num" json:"partition-num"`
-	ReplicationFactor int `toml:"replication-factor" json:"replication-factor"`
-	kafka-version
-	max-message-bytes
-	compression
-	kafka-client-id
-	auto-create-topic
-	dial-timeout
-	write-timeout
-	read-timeout
-	required-acks
-	sasl-user
-	sasl-password
-	sasl-mechanism
-	sasl-gssapi-auth-type
-	sasl-gssapi-keytab-path
-	sasl-gssapi-kerberos-config-path
-	sasl-gssapi-service-name
-	sasl-gssapi-user
-	sasl-gssapi-password
-	sasl-gssapi-realm
-	sasl-gssapi-disable-pafxfast
-	enable-tls
-	ca
-	cert
-	key
+// CodecConfig represents a MQ codec configuration
+type CodecConfig struct {
+	EnableTiDBExtension            bool   `json:"enable-tidb-extension" json:"enable-tidb-extension"`
+	MaxBatchSize                   int    `json:"max-batch-size" json:"max-batch-size"`
+	MaxMessageBytes                int    `json:"max-message-bytes" json:"max-message-bytes"`
+	AvroDecimalHandlingMode        string `json:"avro-decimal-handling-mode" json:"avro-decimal-handling-mode"`
+	AvroBigintUnsignedHandlingMode string `json:"avro-bigint-unsigned-handling-mode" json:"avro-bigint-unsigned-handling-mode"`
+}
+
+// MQConfig represents a kafka sink configuration
+type MQConfig struct {
+	PartitionNum                 int          `toml:"partition-num" json:"partition-num"`
+	ReplicationFactor            int          `toml:"replication-factor" json:"replication-factor"`
+	KafkaVersion                 string       `toml:"kafka-version" json:"kafka-version"`
+	MaxMessageBytes              int          `toml:"max-message-bytes" json:"max-message-bytes"`
+	Compression                  string       `toml:"compression" json:"compression"`
+	KafkaClientID                string       `toml:"kafka-client-id" json:"kafka-client-id"`
+	AutoCreateTopic              bool         `toml:"auto-create-topic" json:"auto-create-topic"`
+	DialTimeout                  int          `toml:"dial-timeout" json:"dial-timeout"`
+	WriteTimeout                 int          `toml:"write-timeout" json:"write-timeout"`
+	ReadTimeout                  int          `toml:"read-timeout" json:"read-timeout"`
+	RequiredAcks                 int          `toml:"required-acks" json:"required-acks"`
+	SASLUser                     string       `toml:"sasl-user" json:"sasl-user"`
+	SASLPassword                 string       `toml:"sasl-password" json:"sasl-password"`
+	SASLMechanism                string       `toml:"sasl-mechanism" json:"sasl-mechanism"`
+	SASLGssAPIAuthType           string       `toml:"sasl-gss-api-auth-type" json:"sasl-gss-api-auth-type"`
+	SASLGssAPIKeytabPath         string       `toml:"sasl-gss-api-keytab-path" json:"sasl-gss-api-keytab-path"`
+	SASLGssAPIKerberosConfigPath string       `toml:"sasl-gss-api-kerberos-config-path" json:"sasl-gss-api-kerberos-config-path"`
+	SASLGssAPIServiceName        string       `toml:"sasl-gss-api-service-name" json:"sasl-gss-api-service-name"`
+	SASLGssAPIUser               string       `toml:"sasl-gss-api-user" json:"sasl-gss-api-user"`
+	SASLGssAPIPassword           string       `toml:"sasl-gss-api-password" json:"sasl-gss-api-password"`
+	SASLGssAPIRealm              string       `toml:"sasl-gss-api-realm" json:"sasl-gss-api-realm"`
+	SASLGssAPIDisablePafxfast    bool         `toml:"sasl-gss-api-disable-pafxfast" json:"sasl-gss-api-disable-pafxfast"`
+	EnableTLS                    bool         `toml:"enable-tls" json:"enable-tls"`
+	CA                           string       `toml:"ca" json:"ca"`
+	Cert                         string       `toml:"cert" json:"cert"`
+	Key                          string       `toml:"key" json:"key"`
+	CodecConfig                  *CodecConfig `toml:"codec-config" json:"codec-config"`
+}
+
+// MySQLConfig represents a MySQL sink configuration
+type MySQLConfig struct {
+	WorkerCount            int    `toml:"worker-count" json:"worker-count"`
+	MaxTxRow               int    `toml:"max-tx-row" json:"max-tx-row"`
+	MaxMultiUpdateRowSize  int    `toml:"max-multi-update-row-size" json:"max-multi-update-row-size"`
+	TiDBTxnMode            bool   `toml:"tidb-txn-mode" json:"tidb-txn-mode"`
+	SSLCa                  string `toml:"ssl-ca" json:"ssl-ca"`
+	SSLCert                string `toml:"ssl-cert" json:"ssl-cert"`
+	SSLKey                 string `toml:"ssl-key" json:"ssl-key"`
+	TimeZone               string `toml:"time-zone" json:"time-zone"`
+	WriteTimeout           int    `toml:"write-timeout" json:"write-timeout"`
+	ReadTimeout            int    `toml:"read-timeout" json:"read-timeout"`
+	Timeout                int    `toml:"timeout" json:"timeout"`
+	EnableBatchDML         bool   `toml:"enable-batch-dml" json:"enable-batch-dml"`
+	EnableMultiStatement   bool   `toml:"enable-multi-statement" json:"enable-multi-statement"`
+	CachePreparedStatement bool   `toml:"cache-prepared-statement" json:"cache-prepared-statement"`
+}
+
+// CloudStorageConfig represents a cloud storage sink configuration
+type CloudStorageConfig struct {
+	WorkerCount   int `toml:"worker-count" json:"worker-count"`
+	FlushInterval int `toml:"flush-interval" json:"flush-interval"`
+	FileSize      int `toml:"file-size" json:"file-size"`
 }
 
 func (s *SinkConfig) validateAndAdjust(sinkURI *url.URL, enableOldValue bool) error {
