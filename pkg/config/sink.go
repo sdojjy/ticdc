@@ -118,8 +118,11 @@ type SinkConfig struct {
 	// TiDBSourceID is the source ID of the upstream TiDB,
 	// which is used to set the `tidb_cdc_write_source` session variable.
 	// Note: This field is only used internally and only used in the MySQL sink.
-	TiDBSourceID uint64 `toml:"-" json:"-"`
-	SafeMode     bool   `toml:"safe-mode" json:"safe-mode"`
+	TiDBSourceID       uint64              `toml:"-" json:"-"`
+	SafeMode           *bool               `toml:"safe-mode" json:"safe-mode,omitempty"`
+	KafkaConfig        *KafkaConfig        `toml:"kafka-config" json:"kafka-config,omitempty"`
+	MySQLConfig        *MySQLConfig        `toml:"mysql-config" json:"mysql-config,omitempty"`
+	CloudStorageConfig *CloudStorageConfig `toml:"cloud-storage-config" json:"cloud-storage-config,omitempty"`
 }
 
 // CSVConfig defines a series of configuration items for csv codec.
@@ -204,8 +207,8 @@ type CodecConfig struct {
 	AvroBigintUnsignedHandlingMode string `json:"avro-bigint-unsigned-handling-mode" json:"avro-bigint-unsigned-handling-mode"`
 }
 
-// MQConfig represents a kafka sink configuration
-type MQConfig struct {
+// KafkaConfig represents a kafka sink configuration
+type KafkaConfig struct {
 	PartitionNum                 int          `toml:"partition-num" json:"partition-num"`
 	ReplicationFactor            int          `toml:"replication-factor" json:"replication-factor"`
 	KafkaVersion                 string       `toml:"kafka-version" json:"kafka-version"`
@@ -237,20 +240,21 @@ type MQConfig struct {
 
 // MySQLConfig represents a MySQL sink configuration
 type MySQLConfig struct {
-	WorkerCount            int    `toml:"worker-count" json:"worker-count"`
-	MaxTxRow               int    `toml:"max-tx-row" json:"max-tx-row"`
-	MaxMultiUpdateRowSize  int    `toml:"max-multi-update-row-size" json:"max-multi-update-row-size"`
-	TiDBTxnMode            bool   `toml:"tidb-txn-mode" json:"tidb-txn-mode"`
-	SSLCa                  string `toml:"ssl-ca" json:"ssl-ca"`
-	SSLCert                string `toml:"ssl-cert" json:"ssl-cert"`
-	SSLKey                 string `toml:"ssl-key" json:"ssl-key"`
-	TimeZone               string `toml:"time-zone" json:"time-zone"`
-	WriteTimeout           int    `toml:"write-timeout" json:"write-timeout"`
-	ReadTimeout            int    `toml:"read-timeout" json:"read-timeout"`
-	Timeout                int    `toml:"timeout" json:"timeout"`
-	EnableBatchDML         bool   `toml:"enable-batch-dml" json:"enable-batch-dml"`
-	EnableMultiStatement   bool   `toml:"enable-multi-statement" json:"enable-multi-statement"`
-	CachePreparedStatement bool   `toml:"cache-prepared-statement" json:"cache-prepared-statement"`
+	WorkerCount                  *int    `toml:"worker-count" json:"worker-count,omitempty"`
+	MaxTxRow                     *int    `toml:"max-tx-row" json:"max-tx-row,omitempty"`
+	MaxMultiUpdateRowSize        *int    `toml:"max-multi-update-row-size" json:"max-multi-update-row-size,omitempty"`
+	MaxMultiUpdateRowCount       *int    `toml:"max-multi-update-row" json:"max-multi-update-row,omitempty"`
+	TiDBTxnMode                  *string `toml:"tidb-txn-mode" json:"tidb-txn-mode,omitempty"`
+	SSLCa                        *string `toml:"ssl-ca" json:"ssl-ca,omitempty"`
+	SSLCert                      *string `toml:"ssl-cert" json:"ssl-cert,omitempty"`
+	SSLKey                       *string `toml:"ssl-key" json:"ssl-key,omitempty"`
+	TimeZone                     *string `toml:"time-zone" json:"time-zone,omitempty"`
+	WriteTimeout                 *string `toml:"write-timeout" json:"write-timeout,omitempty"`
+	ReadTimeout                  *string `toml:"read-timeout" json:"read-timeout,omitempty"`
+	Timeout                      *string `toml:"timeout" json:"timeout,omitempty"`
+	EnableBatchDML               *bool   `toml:"enable-batch-dml" json:"enable-batch-dml,omitempty"`
+	EnableMultiStatement         *bool   `toml:"enable-multi-statement" json:"enable-multi-statement,omitempty"`
+	EnableCachePreparedStatement *bool   `toml:"enable-cache-prepared-statement" json:"enable-cache-prepared-statement,omitempty"`
 }
 
 // CloudStorageConfig represents a cloud storage sink configuration
