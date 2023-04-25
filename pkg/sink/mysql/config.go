@@ -17,7 +17,6 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -30,6 +29,7 @@ import (
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/security"
 	"github.com/pingcap/tiflow/pkg/sink"
+	"github.com/pingcap/tiflow/pkg/sink/config_applier"
 	"github.com/pingcap/tiflow/pkg/util"
 	"go.uber.org/zap"
 )
@@ -136,264 +136,135 @@ func (c *Config) Apply(
 		return cerror.ErrMySQLConnectionError.GenWithStack("can't create MySQL sink with unsupported scheme: %s", scheme)
 	}
 	query := sinkURI.Query()
+	// make sure MySQLConfig is not nil
+	if replicaConfig.Sink.MySQLConfig == nil {
+		replicaConfig.Sink.MySQLConfig = &config.MySQLConfig{}
+		defer func() {
+			replicaConfig.Sink.MySQLConfig = nil
+		}()
+	}
 
 	var appliers = []any{
-		applier[int]{
-			getValue: []valueGetter[int]{
-				configFileIntValueGetter(replicaConfig.Sink.MySQLConfig.WorkerCount,
-					replicaConfig.Sink, replicaConfig.Sink.MySQLConfig),
-				urlIntValGetter(query, "worker-count"),
+		config_applier.Applier[int]{
+			ValueGetter: []config_applier.ValueGetter[int]{
+				config_applier.ConfigFileIntValueGetter(replicaConfig.Sink.MySQLConfig.WorkerCount),
+				config_applier.UrlIntValGetter(query, "worker-count"),
 			},
-			validateAndAdjust: validateAndAdjustWorkerCount,
-			valueHolder:       &c.WorkerCount,
+			ValidateAndAdjust: validateAndAdjustWorkerCount,
+			ValueHolder:       &c.WorkerCount,
 		},
-		applier[int]{
-			getValue: []valueGetter[int]{
-				configFileIntValueGetter(replicaConfig.Sink.MySQLConfig.MaxTxRow,
-					replicaConfig.Sink, replicaConfig.Sink.MySQLConfig),
-				urlIntValGetter(query, "max-txn-row"),
+		config_applier.Applier[int]{
+			ValueGetter: []config_applier.ValueGetter[int]{
+				config_applier.ConfigFileIntValueGetter(replicaConfig.Sink.MySQLConfig.MaxTxRow),
+				config_applier.UrlIntValGetter(query, "max-txn-row"),
 			},
-			validateAndAdjust: validateAndAdjustMaxTxnRow,
-			valueHolder:       &c.MaxTxnRow,
+			ValidateAndAdjust: validateAndAdjustMaxTxnRow,
+			ValueHolder:       &c.MaxTxnRow,
 		},
-		applier[int]{
-			getValue: []valueGetter[int]{
-				configFileIntValueGetter(replicaConfig.Sink.MySQLConfig.MaxMultiUpdateRowCount,
-					replicaConfig.Sink, replicaConfig.Sink.MySQLConfig),
-				urlIntValGetter(query, "max-multi-update-row"),
+		config_applier.Applier[int]{
+			ValueGetter: []config_applier.ValueGetter[int]{
+				config_applier.ConfigFileIntValueGetter(replicaConfig.Sink.MySQLConfig.MaxMultiUpdateRowCount),
+				config_applier.UrlIntValGetter(query, "max-multi-update-row"),
 			},
-			validateAndAdjust: validateAndAdjustMaxMultiUpdateRowCount,
-			valueHolder:       &c.MaxMultiUpdateRowCount,
+			ValidateAndAdjust: validateAndAdjustMaxMultiUpdateRowCount,
+			ValueHolder:       &c.MaxMultiUpdateRowCount,
 		},
-		applier[int]{
-			getValue: []valueGetter[int]{
-				configFileIntValueGetter(replicaConfig.Sink.MySQLConfig.MaxMultiUpdateRowSize,
-					replicaConfig.Sink, replicaConfig.Sink.MySQLConfig),
-				urlIntValGetter(query, "max-multi-update-row-size"),
+		config_applier.Applier[int]{
+			ValueGetter: []config_applier.ValueGetter[int]{
+				config_applier.ConfigFileIntValueGetter(replicaConfig.Sink.MySQLConfig.MaxMultiUpdateRowSize),
+				config_applier.UrlIntValGetter(query, "max-multi-update-row-size"),
 			},
-			validateAndAdjust: validateAndAdjustMaxMultiUpdateRowSize,
-			valueHolder:       &c.MaxMultiUpdateRowSize,
+			ValidateAndAdjust: validateAndAdjustMaxMultiUpdateRowSize,
+			ValueHolder:       &c.MaxMultiUpdateRowSize,
 		},
-		applier[string]{
-			getValue: []valueGetter[string]{
-				configFileStringValueGetter(replicaConfig.Sink.MySQLConfig.TiDBTxnMode,
-					replicaConfig.Sink, replicaConfig.Sink.MySQLConfig),
-				urlStringValGetter(query, "tidb-txn-mode"),
+		config_applier.Applier[string]{
+			ValueGetter: []config_applier.ValueGetter[string]{
+				config_applier.ConfigFileStringValueGetter(replicaConfig.Sink.MySQLConfig.TiDBTxnMode),
+				config_applier.UrlStringValGetter(query, "tidb-txn-mode"),
 			},
-			validateAndAdjust: validateAndAdjustTiDBTxnMode,
-			valueHolder:       &c.tidbTxnMode,
+			ValidateAndAdjust: validateAndAdjustTiDBTxnMode,
+			ValueHolder:       &c.tidbTxnMode,
 		},
-		applier[string]{
-			getValue: []valueGetter[string]{
+		config_applier.Applier[string]{
+			ValueGetter: []config_applier.ValueGetter[string]{
 				getSSLCAFromConfigFile(replicaConfig, changefeedID),
 				getSSLCAFromURL(query, changefeedID),
 			},
-			validateAndAdjust: nil,
-			valueHolder:       &c.TLS,
+			ValidateAndAdjust: nil,
+			ValueHolder:       &c.TLS,
 		},
-		applier[bool]{
-			getValue: []valueGetter[bool]{
-				configFileBoolValueGetter(replicaConfig.Sink.SafeMode, replicaConfig.Sink),
-				urlBoolValGetter(query, "safe-mode"),
+		config_applier.Applier[bool]{
+			ValueGetter: []config_applier.ValueGetter[bool]{
+				config_applier.ConfigFileBoolValueGetter(replicaConfig.Sink.SafeMode),
+				config_applier.UrlBoolValGetter(query, "safe-mode"),
 			},
-			validateAndAdjust: nil,
-			valueHolder:       &c.SafeMode,
+			ValidateAndAdjust: nil,
+			ValueHolder:       &c.SafeMode,
 		},
-		applier[string]{
-			getValue: []valueGetter[string]{
+		config_applier.Applier[string]{
+			ValueGetter: []config_applier.ValueGetter[string]{
 				getTimezone(ctx, query, replicaConfig),
 			},
-			validateAndAdjust: nil,
-			valueHolder:       &c.Timezone,
+			ValidateAndAdjust: nil,
+			ValueHolder:       &c.Timezone,
 		},
-		applier[string]{
-			getValue: []valueGetter[string]{
-				configFileStringValueGetter(replicaConfig.Sink.MySQLConfig.ReadTimeout,
-					replicaConfig.Sink, replicaConfig.Sink.MySQLConfig),
-				urlStringValGetter(query, "read-timeout"),
+		config_applier.Applier[string]{
+			ValueGetter: []config_applier.ValueGetter[string]{
+				config_applier.ConfigFileStringValueGetter(replicaConfig.Sink.MySQLConfig.ReadTimeout),
+				config_applier.UrlStringValGetter(query, "read-timeout"),
 			},
-			validateAndAdjust: validateDuration,
-			valueHolder:       &c.ReadTimeout,
+			ValidateAndAdjust: validateDuration,
+			ValueHolder:       &c.ReadTimeout,
 		},
-		applier[string]{
-			getValue: []valueGetter[string]{
-				configFileStringValueGetter(replicaConfig.Sink.MySQLConfig.WriteTimeout,
-					replicaConfig.Sink, replicaConfig.Sink.MySQLConfig),
-				urlStringValGetter(query, "write-timeout"),
+		config_applier.Applier[string]{
+			ValueGetter: []config_applier.ValueGetter[string]{
+				config_applier.ConfigFileStringValueGetter(replicaConfig.Sink.MySQLConfig.WriteTimeout),
+				config_applier.UrlStringValGetter(query, "write-timeout"),
 			},
-			validateAndAdjust: validateDuration,
-			valueHolder:       &c.WriteTimeout,
+			ValidateAndAdjust: validateDuration,
+			ValueHolder:       &c.WriteTimeout,
 		},
-		applier[string]{
-			getValue: []valueGetter[string]{
-				configFileStringValueGetter(replicaConfig.Sink.MySQLConfig.Timeout,
-					replicaConfig.Sink, replicaConfig.Sink.MySQLConfig),
-				urlStringValGetter(query, "timeout"),
+		config_applier.Applier[string]{
+			ValueGetter: []config_applier.ValueGetter[string]{
+				config_applier.ConfigFileStringValueGetter(replicaConfig.Sink.MySQLConfig.Timeout),
+				config_applier.UrlStringValGetter(query, "timeout"),
 			},
-			validateAndAdjust: validateDuration,
-			valueHolder:       &c.DialTimeout,
+			ValidateAndAdjust: validateDuration,
+			ValueHolder:       &c.DialTimeout,
 		},
-		applier[bool]{
-			getValue: []valueGetter[bool]{
-				configFileBoolValueGetter(replicaConfig.Sink.MySQLConfig.EnableBatchDML,
-					replicaConfig.Sink, replicaConfig.Sink.MySQLConfig),
-				urlBoolValGetter(query, "batch-dml-enable"),
+		config_applier.Applier[bool]{
+			ValueGetter: []config_applier.ValueGetter[bool]{
+				config_applier.ConfigFileBoolValueGetter(replicaConfig.Sink.MySQLConfig.EnableBatchDML),
+				config_applier.UrlBoolValGetter(query, "batch-dml-enable"),
 			},
-			validateAndAdjust: nil,
-			valueHolder:       &c.BatchDMLEnable,
+			ValidateAndAdjust: nil,
+			ValueHolder:       &c.BatchDMLEnable,
 		},
-		applier[bool]{
-			getValue: []valueGetter[bool]{
-				configFileBoolValueGetter(replicaConfig.Sink.MySQLConfig.EnableMultiStatement,
-					replicaConfig.Sink, replicaConfig.Sink.MySQLConfig),
-				urlBoolValGetter(query, "multi-stmt-enable"),
+		config_applier.Applier[bool]{
+			ValueGetter: []config_applier.ValueGetter[bool]{
+				config_applier.ConfigFileBoolValueGetter(replicaConfig.Sink.MySQLConfig.EnableMultiStatement),
+				config_applier.UrlBoolValGetter(query, "multi-stmt-enable"),
 			},
-			validateAndAdjust: nil,
-			valueHolder:       &c.MultiStmtEnable,
+			ValidateAndAdjust: nil,
+			ValueHolder:       &c.MultiStmtEnable,
 		},
-		applier[bool]{
-			getValue: []valueGetter[bool]{
-				configFileBoolValueGetter(replicaConfig.Sink.MySQLConfig.EnableCachePreparedStatement,
-					replicaConfig.Sink, replicaConfig.Sink.MySQLConfig),
-				urlBoolValGetter(query, "cache-prep-stmts"),
+		config_applier.Applier[bool]{
+			ValueGetter: []config_applier.ValueGetter[bool]{
+				config_applier.ConfigFileBoolValueGetter(replicaConfig.Sink.MySQLConfig.EnableCachePreparedStatement),
+				config_applier.UrlBoolValGetter(query, "cache-prep-stmts"),
 			},
-			validateAndAdjust: nil,
-			valueHolder:       &c.CachePrepStmts,
+			ValidateAndAdjust: nil,
+			ValueHolder:       &c.CachePrepStmts,
 		},
 	}
-	for _, ap := range appliers {
-		switch v := ap.(type) {
-		case *applier[int]:
-			if err = v.apply(); err != nil {
-				return err
-			}
-		case *applier[bool]:
-			if err = v.apply(); err != nil {
-				return err
-			}
-		case *applier[string]:
-			if err = v.apply(); err != nil {
-				return err
-			}
-		}
+	if err := config_applier.Apply(appliers); err != nil {
+		return err
 	}
 	c.EnableOldValue = replicaConfig.EnableOldValue
 	c.ForceReplicate = replicaConfig.ForceReplicate
 	c.SourceID = replicaConfig.Sink.TiDBSourceID
 
 	return nil
-}
-
-type applier[T any] struct {
-	getValue          []valueGetter[T]
-	validateAndAdjust func(v T) (T, error)
-	valueHolder       *T
-}
-
-func (ap applier[T]) apply() error {
-	var mergedValue T
-	for _, f := range ap.getValue {
-		override, v, err := f()
-		if err != nil {
-			return err
-		}
-		if !override {
-			continue
-		}
-		nv := v
-		if ap.validateAndAdjust != nil {
-			nv, err = ap.validateAndAdjust(v)
-			if err != nil {
-				return err
-			}
-		}
-		mergedValue = nv
-	}
-	ap.valueHolder = &mergedValue
-	return nil
-}
-
-type valueGetter[T any] func() (bool, T, error)
-
-func urlIntValGetter(values url.Values, key string) valueGetter[int] {
-	return func() (bool, int, error) {
-		s := values.Get(key)
-		if len(s) == 0 {
-			return false, 0, nil
-		}
-
-		c, err := strconv.Atoi(s)
-		if err != nil {
-			return false, 0, cerror.WrapError(cerror.ErrMySQLInvalidConfig, err)
-		}
-		return true, c, nil
-	}
-}
-
-func urlBoolValGetter(values url.Values, key string) valueGetter[bool] {
-	return func() (bool, bool, error) {
-		s := values.Get(key)
-		if len(s) > 0 {
-			enable, err := strconv.ParseBool(s)
-			if err != nil {
-				return false, false, cerror.WrapError(cerror.ErrMySQLInvalidConfig, err)
-			}
-			return true, enable, nil
-		}
-		return false, false, nil
-	}
-}
-
-func urlStringValGetter(values url.Values, key string) valueGetter[string] {
-	return func() (bool, string, error) {
-		s := values.Get(key)
-		return len(s) > 0, s, nil
-	}
-}
-
-func configFileIntValueGetter(c *int, preChecks ...interface{}) valueGetter[int] {
-	return func() (bool, int, error) {
-		for _, p := range preChecks {
-			if p == nil {
-				return false, 0, nil
-			}
-		}
-
-		if c == nil {
-			return false, 0, nil
-		}
-		return true, *c, nil
-	}
-}
-
-func configFileBoolValueGetter(c *bool, preChecks ...interface{}) valueGetter[bool] {
-	return func() (bool, bool, error) {
-		for _, p := range preChecks {
-			if p == nil {
-				return false, false, nil
-			}
-		}
-
-		if c == nil {
-			return false, false, nil
-		}
-		return true, *c, nil
-	}
-}
-
-func configFileStringValueGetter(c *string, preChecks ...interface{}) valueGetter[string] {
-	return func() (bool, string, error) {
-		for _, p := range preChecks {
-			if p == nil {
-				return false, "", nil
-			}
-		}
-
-		if c == nil {
-			return false, "", nil
-		}
-		return true, *c, nil
-	}
 }
 
 func validateAndAdjustWorkerCount(c int) (int, error) {
@@ -458,7 +329,7 @@ func validateAndAdjustTiDBTxnMode(s string) (string, error) {
 	return defaultTiDBTxnMode, nil
 }
 
-func getSSLCAFromConfigFile(replicaConfig *config.ReplicaConfig, changefeedID model.ChangeFeedID) valueGetter[string] {
+func getSSLCAFromConfigFile(replicaConfig *config.ReplicaConfig, changefeedID model.ChangeFeedID) config_applier.ValueGetter[string] {
 	return func() (bool, string, error) {
 		if replicaConfig.Sink == nil || replicaConfig.Sink.MySQLConfig == nil {
 			return false, "", nil
@@ -486,7 +357,7 @@ func getSSLCAFromConfigFile(replicaConfig *config.ReplicaConfig, changefeedID mo
 	}
 }
 
-func getSSLCAFromURL(values url.Values, changefeedID model.ChangeFeedID) valueGetter[string] {
+func getSSLCAFromURL(values url.Values, changefeedID model.ChangeFeedID) config_applier.ValueGetter[string] {
 	return func() (bool, string, error) {
 		s := values.Get("ssl-ca")
 		if len(s) == 0 {
@@ -513,7 +384,7 @@ func getSSLCAFromURL(values url.Values, changefeedID model.ChangeFeedID) valueGe
 }
 
 func getTimezone(ctxWithTimezone context.Context, values url.Values,
-	replicaConfig *config.ReplicaConfig) valueGetter[string] {
+	replicaConfig *config.ReplicaConfig) config_applier.ValueGetter[string] {
 	const pleaseSpecifyTimezone = "We recommend that you specify the time-zone explicitly. " +
 		"Please make sure that the timezone of the TiCDC server, " +
 		"sink-uri and the downstream database are consistent. " +

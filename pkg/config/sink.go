@@ -259,9 +259,9 @@ type MySQLConfig struct {
 
 // CloudStorageConfig represents a cloud storage sink configuration
 type CloudStorageConfig struct {
-	WorkerCount   int `toml:"worker-count" json:"worker-count"`
-	FlushInterval int `toml:"flush-interval" json:"flush-interval"`
-	FileSize      int `toml:"file-size" json:"file-size"`
+	WorkerCount   *int    `toml:"worker-count" json:"worker-count"`
+	FlushInterval *string `toml:"flush-interval" json:"flush-interval"`
+	FileSize      *int    `toml:"file-size" json:"file-size"`
 }
 
 func (s *SinkConfig) validateAndAdjust(sinkURI *url.URL, enableOldValue bool) error {

@@ -17,7 +17,6 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +24,7 @@ import (
 	"github.com/pingcap/tiflow/pkg/config"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	psink "github.com/pingcap/tiflow/pkg/sink"
+	"github.com/pingcap/tiflow/pkg/sink/config_applier"
 	"go.uber.org/zap"
 )
 
@@ -82,36 +82,57 @@ func (c *Config) Apply(
 			"can't create cloud storage sink with unsupported scheme: %s", scheme)
 	}
 	query := sinkURI.Query()
-	if err = getWorkerCount(query, &c.WorkerCount); err != nil {
+	// make sure MySQLConfig is not nil
+	if replicaConfig.Sink.CloudStorageConfig == nil {
+		replicaConfig.Sink.CloudStorageConfig = &config.CloudStorageConfig{}
+		defer func() {
+			replicaConfig.Sink.CloudStorageConfig = nil
+		}()
+	}
+	var flushInterval string
+	var appliers = []any{
+		config_applier.Applier[int]{
+			ValueGetter: []config_applier.ValueGetter[int]{
+				config_applier.ConfigFileIntValueGetter(replicaConfig.Sink.CloudStorageConfig.WorkerCount),
+				config_applier.UrlIntValGetter(query, "worker-count"),
+			},
+			ValidateAndAdjust: validateAndAdjustWorkerCount,
+			ValueHolder:       &c.WorkerCount,
+		},
+		config_applier.Applier[string]{
+			ValueGetter: []config_applier.ValueGetter[string]{
+				config_applier.ConfigFileStringValueGetter(replicaConfig.Sink.CloudStorageConfig.FlushInterval),
+				config_applier.UrlStringValGetter(query, "flush-interval"),
+			},
+			ValidateAndAdjust: validateAndAdjustFlushInterval,
+			ValueHolder:       &flushInterval,
+		},
+		config_applier.Applier[int]{
+			ValueGetter: []config_applier.ValueGetter[int]{
+				config_applier.ConfigFileIntValueGetter(replicaConfig.Sink.CloudStorageConfig.FileSize),
+				config_applier.UrlIntValGetter(query, "file-size"),
+			},
+			ValidateAndAdjust: validateAndAdjustFileSize,
+			ValueHolder:       &c.FileSize,
+		},
+	}
+	if err := config_applier.Apply(appliers); err != nil {
 		return err
 	}
-	err = getFlushInterval(query, &c.FlushInterval)
+	interval, err := time.ParseDuration(flushInterval)
 	if err != nil {
 		return err
 	}
-	err = getFileSize(query, &c.FileSize)
-	if err != nil {
-		return err
-	}
-
+	c.FlushInterval = interval
 	c.DateSeparator = replicaConfig.Sink.DateSeparator
 	c.EnablePartitionSeparator = replicaConfig.Sink.EnablePartitionSeparator
 
 	return nil
 }
 
-func getWorkerCount(values url.Values, workerCount *int) error {
-	s := values.Get("worker-count")
-	if len(s) == 0 {
-		return nil
-	}
-
-	c, err := strconv.Atoi(s)
-	if err != nil {
-		return cerror.WrapError(cerror.ErrStorageSinkInvalidConfig, err)
-	}
+func validateAndAdjustWorkerCount(c int) (int, error) {
 	if c <= 0 {
-		return cerror.WrapError(cerror.ErrStorageSinkInvalidConfig,
+		return 0, cerror.WrapError(cerror.ErrStorageSinkInvalidConfig,
 			fmt.Errorf("invalid worker-count %d, it must be greater than 0", c))
 	}
 	if c > maxWorkerCount {
@@ -119,20 +140,13 @@ func getWorkerCount(values url.Values, workerCount *int) error {
 			zap.Int("original", c), zap.Int("override", maxWorkerCount))
 		c = maxWorkerCount
 	}
-
-	*workerCount = c
-	return nil
+	return c, nil
 }
 
-func getFlushInterval(values url.Values, flushInterval *time.Duration) error {
-	s := values.Get("flush-interval")
-	if len(s) == 0 {
-		return nil
-	}
-
+func validateAndAdjustFlushInterval(s string) (string, error) {
 	d, err := time.ParseDuration(s)
 	if err != nil {
-		return cerror.WrapError(cerror.ErrStorageSinkInvalidConfig, err)
+		return "", cerror.WrapError(cerror.ErrStorageSinkInvalidConfig, err)
 	}
 
 	if d > maxFlushInterval {
@@ -146,20 +160,10 @@ func getFlushInterval(values url.Values, flushInterval *time.Duration) error {
 		d = minFlushInterval
 	}
 
-	*flushInterval = d
-	return nil
+	return d.String(), nil
 }
 
-func getFileSize(values url.Values, fileSize *int) error {
-	s := values.Get("file-size")
-	if len(s) == 0 {
-		return nil
-	}
-
-	sz, err := strconv.Atoi(s)
-	if err != nil {
-		return cerror.WrapError(cerror.ErrStorageSinkInvalidConfig, err)
-	}
+func validateAndAdjustFileSize(sz int) (int, error) {
 	if sz > maxFileSize {
 		log.Warn("file-size is too large",
 			zap.Int("original", sz), zap.Int("override", maxFileSize))
@@ -170,6 +174,5 @@ func getFileSize(values url.Values, fileSize *int) error {
 			zap.Int("original", sz), zap.Int("override", minFileSize))
 		sz = minFileSize
 	}
-	*fileSize = sz
-	return nil
+	return sz, nil
 }
