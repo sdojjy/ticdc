@@ -209,32 +209,32 @@ type CodecConfig struct {
 
 // KafkaConfig represents a kafka sink configuration
 type KafkaConfig struct {
-	PartitionNum                 int          `toml:"partition-num" json:"partition-num"`
-	ReplicationFactor            int          `toml:"replication-factor" json:"replication-factor"`
-	KafkaVersion                 string       `toml:"kafka-version" json:"kafka-version"`
-	MaxMessageBytes              int          `toml:"max-message-bytes" json:"max-message-bytes"`
-	Compression                  string       `toml:"compression" json:"compression"`
-	KafkaClientID                string       `toml:"kafka-client-id" json:"kafka-client-id"`
-	AutoCreateTopic              bool         `toml:"auto-create-topic" json:"auto-create-topic"`
-	DialTimeout                  int          `toml:"dial-timeout" json:"dial-timeout"`
-	WriteTimeout                 int          `toml:"write-timeout" json:"write-timeout"`
-	ReadTimeout                  int          `toml:"read-timeout" json:"read-timeout"`
-	RequiredAcks                 int          `toml:"required-acks" json:"required-acks"`
-	SASLUser                     string       `toml:"sasl-user" json:"sasl-user"`
-	SASLPassword                 string       `toml:"sasl-password" json:"sasl-password"`
-	SASLMechanism                string       `toml:"sasl-mechanism" json:"sasl-mechanism"`
-	SASLGssAPIAuthType           string       `toml:"sasl-gss-api-auth-type" json:"sasl-gss-api-auth-type"`
-	SASLGssAPIKeytabPath         string       `toml:"sasl-gss-api-keytab-path" json:"sasl-gss-api-keytab-path"`
-	SASLGssAPIKerberosConfigPath string       `toml:"sasl-gss-api-kerberos-config-path" json:"sasl-gss-api-kerberos-config-path"`
-	SASLGssAPIServiceName        string       `toml:"sasl-gss-api-service-name" json:"sasl-gss-api-service-name"`
-	SASLGssAPIUser               string       `toml:"sasl-gss-api-user" json:"sasl-gss-api-user"`
-	SASLGssAPIPassword           string       `toml:"sasl-gss-api-password" json:"sasl-gss-api-password"`
-	SASLGssAPIRealm              string       `toml:"sasl-gss-api-realm" json:"sasl-gss-api-realm"`
-	SASLGssAPIDisablePafxfast    bool         `toml:"sasl-gss-api-disable-pafxfast" json:"sasl-gss-api-disable-pafxfast"`
-	EnableTLS                    bool         `toml:"enable-tls" json:"enable-tls"`
-	CA                           string       `toml:"ca" json:"ca"`
-	Cert                         string       `toml:"cert" json:"cert"`
-	Key                          string       `toml:"key" json:"key"`
+	PartitionNum                 *int32       `toml:"partition-num" json:"partition-num"`
+	ReplicationFactor            *int16       `toml:"replication-factor" json:"replication-factor"`
+	KafkaVersion                 *string      `toml:"kafka-version" json:"kafka-version"`
+	MaxMessageBytes              *int         `toml:"max-message-bytes" json:"max-message-bytes"`
+	Compression                  *string      `toml:"compression" json:"compression"`
+	KafkaClientID                *string      `toml:"kafka-client-id" json:"kafka-client-id"`
+	AutoCreateTopic              *bool        `toml:"auto-create-topic" json:"auto-create-topic"`
+	DialTimeout                  *int         `toml:"dial-timeout" json:"dial-timeout"`
+	WriteTimeout                 *int         `toml:"write-timeout" json:"write-timeout"`
+	ReadTimeout                  *int         `toml:"read-timeout" json:"read-timeout"`
+	RequiredAcks                 *int         `toml:"required-acks" json:"required-acks"`
+	SASLUser                     *string      `toml:"sasl-user" json:"sasl-user"`
+	SASLPassword                 *string      `toml:"sasl-password" json:"sasl-password"`
+	SASLMechanism                *string      `toml:"sasl-mechanism" json:"sasl-mechanism"`
+	SASLGssAPIAuthType           *string      `toml:"sasl-gss-api-auth-type" json:"sasl-gss-api-auth-type"`
+	SASLGssAPIKeytabPath         *string      `toml:"sasl-gss-api-keytab-path" json:"sasl-gss-api-keytab-path"`
+	SASLGssAPIKerberosConfigPath *string      `toml:"sasl-gss-api-kerberos-config-path" json:"sasl-gss-api-kerberos-config-path"`
+	SASLGssAPIServiceName        *string      `toml:"sasl-gss-api-service-name" json:"sasl-gss-api-service-name"`
+	SASLGssAPIUser               *string      `toml:"sasl-gss-api-user" json:"sasl-gss-api-user"`
+	SASLGssAPIPassword           *string      `toml:"sasl-gss-api-password" json:"sasl-gss-api-password"`
+	SASLGssAPIRealm              *string      `toml:"sasl-gss-api-realm" json:"sasl-gss-api-realm"`
+	SASLGssAPIDisablePafxfast    *bool        `toml:"sasl-gss-api-disable-pafxfast" json:"sasl-gss-api-disable-pafxfast"`
+	EnableTLS                    *bool        `toml:"enable-tls" json:"enable-tls"`
+	CA                           *string      `toml:"ca" json:"ca"`
+	Cert                         *string      `toml:"cert" json:"cert"`
+	Key                          *string      `toml:"key" json:"key"`
 	CodecConfig                  *CodecConfig `toml:"codec-config" json:"codec-config"`
 }
 

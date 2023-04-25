@@ -87,6 +87,36 @@ func UrlIntValGetter(values url.Values, key string) ValueGetter[int] {
 	}
 }
 
+func UrlInt32ValGetter(values url.Values, key string) ValueGetter[int32] {
+	return func() (bool, int32, error) {
+		s := values.Get(key)
+		if len(s) == 0 {
+			return false, 0, nil
+		}
+
+		c, err := strconv.Atoi(s)
+		if err != nil {
+			return false, 0, cerror.WrapError(cerror.ErrMySQLInvalidConfig, err)
+		}
+		return true, int32(c), nil
+	}
+}
+
+func UrlInt16ValGetter(values url.Values, key string) ValueGetter[int16] {
+	return func() (bool, int16, error) {
+		s := values.Get(key)
+		if len(s) == 0 {
+			return false, 0, nil
+		}
+
+		c, err := strconv.Atoi(s)
+		if err != nil {
+			return false, 0, cerror.WrapError(cerror.ErrMySQLInvalidConfig, err)
+		}
+		return true, int16(c), nil
+	}
+}
+
 func UrlBoolValGetter(values url.Values, key string) ValueGetter[bool] {
 	return func() (bool, bool, error) {
 		s := values.Get(key)
@@ -110,6 +140,24 @@ func UrlStringValGetter(values url.Values, key string) ValueGetter[string] {
 
 func ConfigFileIntValueGetter(c *int) ValueGetter[int] {
 	return func() (bool, int, error) {
+		if c == nil {
+			return false, 0, nil
+		}
+		return true, *c, nil
+	}
+}
+
+func ConfigFileInt32ValueGetter(c *int32) ValueGetter[int32] {
+	return func() (bool, int32, error) {
+		if c == nil {
+			return false, 0, nil
+		}
+		return true, *c, nil
+	}
+}
+
+func ConfigFileInt16ValueGetter(c *int16) ValueGetter[int16] {
+	return func() (bool, int16, error) {
 		if c == nil {
 			return false, 0, nil
 		}

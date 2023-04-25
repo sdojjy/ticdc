@@ -29,6 +29,7 @@ import (
 	"github.com/pingcap/tiflow/pkg/config"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/security"
+	"github.com/pingcap/tiflow/pkg/sink/config_applier"
 	"go.uber.org/zap"
 )
 
@@ -180,68 +181,80 @@ func (o *Options) SetPartitionNum(realPartitionCount int32) error {
 }
 
 // Apply the sinkURI to update Options
-func (o *Options) Apply(ctx context.Context, sinkURI *url.URL) error {
+func (o *Options) Apply(ctx context.Context,
+	sinkURI *url.URL,
+	replicaConfig *config.ReplicaConfig) error {
 	o.BrokerEndpoints = strings.Split(sinkURI.Host, ",")
 	params := sinkURI.Query()
-	s := params.Get("partition-num")
-	if s != "" {
-		a, err := strconv.ParseInt(s, 10, 32)
-		if err != nil {
-			return err
-		}
-		o.PartitionNum = int32(a)
-		if o.PartitionNum <= 0 {
-			return cerror.ErrKafkaInvalidPartitionNum.GenWithStackByArgs(o.PartitionNum)
-		}
+	var (
+		clientID string
+	)
+	var appliers = []any{
+		config_applier.Applier[int32]{
+			ValueGetter: []config_applier.ValueGetter[int32]{
+				config_applier.ConfigFileInt32ValueGetter(replicaConfig.Sink.KafkaConfig.PartitionNum),
+				config_applier.UrlInt32ValGetter(params, "partition-num"),
+			},
+			ValidateAndAdjust: validateAndAdjustPartitionNum,
+			ValueHolder:       &o.PartitionNum,
+		},
+		config_applier.Applier[int16]{
+			ValueGetter: []config_applier.ValueGetter[int16]{
+				config_applier.ConfigFileInt16ValueGetter(replicaConfig.Sink.KafkaConfig.ReplicationFactor),
+				config_applier.UrlInt16ValGetter(params, "replication-factor"),
+			},
+			ValueHolder: &o.ReplicationFactor,
+		},
+		config_applier.Applier[string]{
+			ValueGetter: []config_applier.ValueGetter[string]{
+				config_applier.ConfigFileStringValueGetter(replicaConfig.Sink.KafkaConfig.KafkaVersion),
+				config_applier.UrlStringValGetter(params, "kafka-version"),
+			},
+			ValueHolder: &o.Version,
+		},
+		config_applier.Applier[int]{
+			ValueGetter: []config_applier.ValueGetter[int]{
+				config_applier.ConfigFileIntValueGetter(replicaConfig.Sink.KafkaConfig.MaxMessageBytes),
+				config_applier.UrlIntValGetter(params, "max-message-bytes"),
+			},
+			ValueHolder: &o.MaxMessageBytes,
+		},
+		config_applier.Applier[string]{
+			ValueGetter: []config_applier.ValueGetter[string]{
+				config_applier.ConfigFileStringValueGetter(replicaConfig.Sink.KafkaConfig.Compression),
+				config_applier.UrlStringValGetter(params, "compression"),
+			},
+			ValueHolder: &o.Compression,
+		},
+		config_applier.Applier[string]{
+			ValueGetter: []config_applier.ValueGetter[string]{
+				config_applier.ConfigFileStringValueGetter(replicaConfig.Sink.KafkaConfig.KafkaClientID),
+				config_applier.UrlStringValGetter(params, "client-id"),
+			},
+			ValueHolder: &clientID,
+		},
+		config_applier.Applier[bool]{
+			ValueGetter: []config_applier.ValueGetter[bool]{
+				config_applier.ConfigFileBoolValueGetter(replicaConfig.Sink.KafkaConfig.AutoCreateTopic),
+				config_applier.UrlBoolValGetter(params, "auto-create-topic"),
+			},
+			ValueHolder: &o.AutoCreate,
+		},
 	}
-
-	s = params.Get("replication-factor")
-	if s != "" {
-		a, err := strconv.ParseInt(s, 10, 16)
-		if err != nil {
-			return err
-		}
-		o.ReplicationFactor = int16(a)
-	}
-
-	s = params.Get("kafka-version")
-	if s != "" {
-		o.Version = s
-	}
-
-	s = params.Get("max-message-bytes")
-	if s != "" {
-		a, err := strconv.Atoi(s)
-		if err != nil {
-			return err
-		}
-		o.MaxMessageBytes = a
-	}
-
-	s = params.Get("compression")
-	if s != "" {
-		o.Compression = s
+	if err := config_applier.Apply(appliers); err != nil {
+		return err
 	}
 
 	clientID, err := NewKafkaClientID(
 		contextutil.CaptureAddrFromCtx(ctx),
 		contextutil.ChangefeedIDFromCtx(ctx),
-		params.Get("kafka-client-id"))
+		clientID)
 	if err != nil {
 		return err
 	}
 	o.ClientID = clientID
 
-	s = params.Get("auto-create-topic")
-	if s != "" {
-		autoCreate, err := strconv.ParseBool(s)
-		if err != nil {
-			return err
-		}
-		o.AutoCreate = autoCreate
-	}
-
-	s = params.Get("dial-timeout")
+	s := params.Get("dial-timeout")
 	if s != "" {
 		a, err := time.ParseDuration(s)
 		if err != nil {
@@ -629,4 +642,12 @@ func getTopicConfig(
 	}
 
 	return admin.GetBrokerConfig(ctx, brokerConfigName)
+}
+
+func validateAndAdjustPartitionNum(c int32) (int32, error) {
+	if c <= 0 {
+		return 0, cerror.ErrKafkaInvalidConfig.GenWithStack(
+			"TiCDC Kafka sink's `partition-num` must be greater than 0")
+	}
+	return c, nil
 }
