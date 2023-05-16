@@ -171,6 +171,8 @@ type ReplicaConfig struct {
 	Consistent *ConsistentConfig          `json:"consistent"`
 	Scheduler  *ChangefeedSchedulerConfig `json:"scheduler"`
 	Integrity  *IntegrityConfig           `json:"integrity"`
+
+	FlowControl *FlowControlConfig `json:"flow_control"`
 }
 
 // ToInternalReplicaConfig coverts *v2.ReplicaConfig into *config.ReplicaConfig
@@ -381,6 +383,12 @@ func (c *ReplicaConfig) toInternalReplicaConfigWithOriginConfig(
 			CorruptionHandleLevel: c.Integrity.CorruptionHandleLevel,
 		}
 	}
+	if c.FlowControl != nil {
+		res.FlowControl = &config.FlowControlConfig{
+			Enable: c.FlowControl.Enable,
+			QPS:    c.FlowControl.QPS,
+		}
+	}
 	return res
 }
 
@@ -538,7 +546,6 @@ func ToAPIReplicaConfig(c *config.ReplicaConfig) *ReplicaConfig {
 				FileSize:      cloned.Sink.CloudStorageConfig.FileSize,
 			}
 		}
-
 		res.Sink = &SinkConfig{
 			Protocol:                 cloned.Sink.Protocol,
 			SchemaRegistry:           cloned.Sink.SchemaRegistry,
@@ -587,7 +594,13 @@ func ToAPIReplicaConfig(c *config.ReplicaConfig) *ReplicaConfig {
 			CorruptionHandleLevel: cloned.Integrity.CorruptionHandleLevel,
 		}
 	}
+	if cloned.FlowControl != nil {
+		res.FlowControl = &FlowControlConfig{
+			Enable: cloned.FlowControl.Enable,
+			QPS:    cloned.FlowControl.QPS,
+		}
 
+	}
 	return res
 }
 
@@ -956,4 +969,9 @@ type ChangefeedStatus struct {
 	ResolvedTs   uint64        `json:"resolved_ts"`
 	CheckpointTs uint64        `json:"checkpoint_ts"`
 	LastError    *RunningError `json:"last_error,omitempty"`
+}
+
+type FlowControlConfig struct {
+	Enable bool `json:"enable"`
+	QPS    int  `json:"qps"`
 }

@@ -140,6 +140,12 @@ type changefeed struct {
 	) (observer.Observer, error)
 
 	lastDDLTs uint64 // Timestamp of the last executed DDL. Only used for tests.
+
+	flowController *flowController
+}
+
+type flowController struct {
+	totalQPS int
 }
 
 func newChangefeed(
@@ -651,6 +657,10 @@ LOOP:
 	}
 
 	c.initMetrics()
+	c.flowController = &flowController{}
+	if c.state.Info.Config.FlowControl != nil {
+		c.flowController.totalQPS = c.state.Info.Config.FlowControl.QPS
+	}
 
 	c.initialized = true
 	log.Info("changefeed initialized",

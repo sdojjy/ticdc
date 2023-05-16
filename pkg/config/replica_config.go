@@ -122,6 +122,13 @@ type replicaConfig struct {
 	// Scheduler is the configuration for scheduler.
 	Scheduler *ChangefeedSchedulerConfig `toml:"scheduler" json:"scheduler"`
 	Integrity *integrity.Config          `toml:"integrity" json:"integrity"`
+
+	FlowControl *FlowControlConfig `toml:"flow-control" json:"flow-control"`
+}
+
+type FlowControlConfig struct {
+	Enable bool `toml:"enable" json:"enable"`
+	QPS    int  `toml:"qps" json:"qps"`
 }
 
 // Marshal returns the json marshal format of a ReplicationConfig

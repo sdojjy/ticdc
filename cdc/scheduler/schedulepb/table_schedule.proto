@@ -97,6 +97,7 @@ message Heartbeat {
     repeated processor.tablepb.Span spans = 3 [(gogoproto.nullable) = false];
     bool collect_stats = 4;
     Barrier barrier = 5;
+    int64 qps = 6;
 }
 
 message HeartbeatResponse {
