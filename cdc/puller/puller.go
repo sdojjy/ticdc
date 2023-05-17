@@ -49,6 +49,7 @@ type Stats struct {
 	ResolvedTsIngress   model.Ts
 	CheckpointTsEgress  model.Ts
 	ResolvedTsEgress    model.Ts
+	PulledRows          int64
 }
 
 // Puller pull data from tikv and push changes into a buffer.
@@ -69,6 +70,8 @@ type pullerImpl struct {
 	checkpointTs uint64
 	// The latest resolved ts that puller has sent.
 	resolvedTs uint64
+
+	outputRows atomic.Int64
 
 	changefeed model.ChangeFeedID
 	tableID    model.TableID
@@ -211,6 +214,8 @@ func (p *pullerImpl) Run(ctx context.Context) error {
 				if err := output(e.Val); err != nil {
 					return errors.Trace(err)
 				}
+				//observe the cost of a single event
+				p.outputRows.Add(1)
 				continue
 			}
 

@@ -38,6 +38,7 @@ import (
 	"github.com/tikv/client-go/v2/oracle"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -103,6 +104,8 @@ type SinkManager struct {
 	redoWorkerAvailable chan struct{}
 	// redoMemQuota is used to control the total memory usage of the redo.
 	redoMemQuota *memquota.MemQuota
+
+	sinkRateLimiter *rate.Limiter
 
 	// To control lifetime of all sub-goroutines.
 	managerCtx context.Context

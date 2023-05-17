@@ -23,6 +23,7 @@ import (
 	"github.com/pingcap/tiflow/cdc/processor/tablepb"
 	"github.com/pingcap/tiflow/cdc/sink/dmlsink"
 	"github.com/pingcap/tiflow/cdc/sink/tablesink/state"
+	"github.com/pingcap/tiflow/pkg/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
@@ -79,6 +80,16 @@ func New[E dmlsink.TableEvent, P dmlsink.Appender[E]](
 func (e *EventTableSink[E, P]) AppendRowChangedEvents(rows ...*model.RowChangedEvent) {
 	e.eventBuffer = e.eventAppender.Append(e.eventBuffer, rows...)
 	e.metricsTableSinkTotalRows.Add(float64(len(rows)))
+}
+
+type FlowControlStatistics struct {
+}
+
+type FlowControlCollector[T any] interface {
+	Init(config *config.ReplicaConfig) error
+	InputRowChangedEvents(tableID tablepb.Span, rows ...*model.RowChangedEvent)
+	OutputRowChangedEvent(tableID tablepb.Span, rows ...*model.RowChangedEvent)
+	Statistics() FlowControlStatistics
 }
 
 // UpdateResolvedTs advances the resolved ts of the table sink.
