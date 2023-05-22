@@ -77,6 +77,8 @@ const (
 	SchedulerRole Role = "scheduler"
 )
 
+var transports = sync.Map{}
+
 // NewTransport returns a new transport.
 func NewTransport(
 	ctx context.Context, changefeed model.ChangeFeedID, role Role,
@@ -90,6 +92,7 @@ func NewTransport(
 		messageServer: server,
 		messageRouter: router,
 	}
+	transports.Store(selfTopic, trans)
 	var err error
 	trans.errCh, err = trans.messageServer.SyncAddHandler(
 		ctx,
@@ -115,6 +118,23 @@ func (t *p2pTransport) Send(
 	for i := range msgs {
 		value := msgs[i]
 		to := value.To
+		//local peer
+		if to == value.From {
+			peerTopic, ok := transports.Load(t.peerTopic)
+			if !ok {
+				log.Warn("schedulerv3: no message client found, retry later",
+					zap.String("namespace", t.changefeed.Namespace),
+					zap.String("changefeed", t.changefeed.ID),
+					zap.String("to", to))
+				continue
+			}
+			trans := peerTopic.(*p2pTransport)
+			trans.mu.Lock()
+			trans.mu.msgBuf = append(trans.mu.msgBuf, value)
+			trans.mu.Unlock()
+			return nil
+		}
+
 		client := t.messageRouter.GetClient(to)
 		if client == nil {
 			log.Warn("schedulerv3: no message client found, retry later",
