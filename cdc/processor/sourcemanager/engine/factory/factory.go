@@ -14,14 +14,19 @@
 package factory
 
 import (
+	"fmt"
+	"strconv"
 	"sync"
+	stdatomic "sync/atomic"
 	"time"
 
+	"github.com/cockroachdb/pebble"
 	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/processor/sourcemanager/engine"
 	epebble "github.com/pingcap/tiflow/cdc/processor/sourcemanager/engine/pebble"
 	"github.com/pingcap/tiflow/pkg/config"
+	"go.uber.org/atomic"
 	"go.uber.org/multierr"
 )
 
@@ -55,11 +60,11 @@ type SortEngineFactory struct {
 
 	// Following fields are valid if engineType is pebbleEngine.
 	pebbleConfig *config.DBConfig
-	//dbs          []*pebble.DB
-	//writeStalls  []writeStall
+	dbs          []*pebble.DB
+	writeStalls  []writeStall
 
 	// dbs is also readed in the background metrics collector.
-	//dbInitialized *atomic.Bool
+	dbInitialized *atomic.Bool
 }
 
 // Create creates a SortEngine. If an engine with same ID already exists,
@@ -74,15 +79,14 @@ func (f *SortEngineFactory) Create(ID model.ChangeFeedID) (e engine.SortEngine, 
 		if e, exists = f.engines[ID]; exists {
 			return e, nil
 		}
-		//if len(f.dbs) == 0 {
-		f.pebbleConfig.Count = 1
-		dbs, _, err2 := createPebbleDBs(f.dir+ID.ID, f.pebbleConfig, f.memQuotaInBytes)
-		if err2 != nil {
-			return
+		if len(f.dbs) == 0 {
+			f.dbs, f.writeStalls, err = createPebbleDBs(f.dir, f.pebbleConfig, f.memQuotaInBytes)
+			if err != nil {
+				return
+			}
+			f.dbInitialized.Store(true)
 		}
-		//f.dbInitialized.Store(true)
-		//}
-		e = epebble.New(ID, dbs)
+		e = epebble.New(ID, f.dbs)
 		f.engines[ID] = e
 	default:
 		log.Panic("not implemented")
@@ -118,9 +122,9 @@ func (f *SortEngineFactory) Close() (err error) {
 	for _, engine := range f.engines {
 		err = multierr.Append(err, engine.Close())
 	}
-	//for _, db := range f.dbs {
-	//	err = multierr.Append(err, db.Close())
-	//}
+	for _, db := range f.dbs {
+		err = multierr.Append(err, db.Close())
+	}
 	return
 }
 
@@ -136,7 +140,7 @@ func NewForPebble(dir string, memQuotaInBytes uint64, cfg *config.DBConfig) *Sor
 			engines:         make(map[model.ChangeFeedID]engine.SortEngine),
 			closed:          make(chan struct{}),
 			pebbleConfig:    cfg,
-			//dbInitialized:   atomic.NewBool(false),
+			dbInitialized:   atomic.NewBool(false),
 		}
 		factory.startMetricsCollector()
 	}
@@ -161,24 +165,24 @@ func (f *SortEngineFactory) startMetricsCollector() {
 }
 
 func (f *SortEngineFactory) collectMetrics() {
-	//if f.engineType == pebbleEngine && f.dbInitialized.Load() {
-	//for i, db := range f.dbs {
-	//	stats := db.Metrics()
-	//	id := strconv.Itoa(i + 1)
-	//	engine.OnDiskDataSize().WithLabelValues(id).Set(float64(stats.DiskSpaceUsage()))
-	//	engine.InMemoryDataSize().WithLabelValues(id).Set(float64(stats.BlockCache.Size))
-	//	engine.IteratorGauge().WithLabelValues(id).Set(float64(stats.TableIters))
-	//	engine.WriteDelayCount().WithLabelValues(id).
-	//		Set(float64(stdatomic.LoadUint64(&f.writeStalls[i].counter)))
-	//
-	//	metricLevelCount := engine.LevelCount().MustCurryWith(map[string]string{"id": id})
-	//	for level, metric := range stats.Levels {
-	//		metricLevelCount.WithLabelValues(fmt.Sprint(level)).Set(float64(metric.NumFiles))
-	//	}
-	//	engine.BlockCacheAccess().WithLabelValues(id, "hit").
-	//		Set(float64(stats.BlockCache.Hits))
-	//	engine.BlockCacheAccess().WithLabelValues(id, "miss").
-	//		Set(float64(stats.BlockCache.Misses))
-	//}
-	//}
+	if f.engineType == pebbleEngine && f.dbInitialized.Load() {
+		for i, db := range f.dbs {
+			stats := db.Metrics()
+			id := strconv.Itoa(i + 1)
+			engine.OnDiskDataSize().WithLabelValues(id).Set(float64(stats.DiskSpaceUsage()))
+			engine.InMemoryDataSize().WithLabelValues(id).Set(float64(stats.BlockCache.Size))
+			engine.IteratorGauge().WithLabelValues(id).Set(float64(stats.TableIters))
+			engine.WriteDelayCount().WithLabelValues(id).
+				Set(float64(stdatomic.LoadUint64(&f.writeStalls[i].counter)))
+
+			metricLevelCount := engine.LevelCount().MustCurryWith(map[string]string{"id": id})
+			for level, metric := range stats.Levels {
+				metricLevelCount.WithLabelValues(fmt.Sprint(level)).Set(float64(metric.NumFiles))
+			}
+			engine.BlockCacheAccess().WithLabelValues(id, "hit").
+				Set(float64(stats.BlockCache.Hits))
+			engine.BlockCacheAccess().WithLabelValues(id, "miss").
+				Set(float64(stats.BlockCache.Misses))
+		}
+	}
 }
