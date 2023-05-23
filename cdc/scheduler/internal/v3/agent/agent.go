@@ -27,6 +27,7 @@ import (
 	"github.com/pingcap/tiflow/cdc/scheduler/internal/v3/transport"
 	"github.com/pingcap/tiflow/cdc/scheduler/schedulepb"
 	"github.com/pingcap/tiflow/pkg/config"
+	cdcContext "github.com/pingcap/tiflow/pkg/context"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/etcd"
 	"github.com/pingcap/tiflow/pkg/p2p"
@@ -41,6 +42,9 @@ type agent struct {
 	agentInfo
 	trans  transport.Transport
 	compat *compat.Compat
+
+	LazyInit func(ctx cdcContext.Context) error
+	ctx      cdcContext.Context
 
 	tableM *tableSpanManager
 
@@ -86,7 +90,7 @@ type ownerInfo struct {
 }
 
 func newAgent(
-	ctx context.Context,
+	ctx cdcContext.Context,
 	captureID model.CaptureID,
 	liveness *model.Liveness,
 	changeFeedID model.ChangeFeedID,
@@ -94,12 +98,15 @@ func newAgent(
 	tableExecutor internal.TableExecutor,
 	changefeedEpoch uint64,
 	cfg *config.SchedulerConfig,
+	initProcessor func(ctx cdcContext.Context) error,
 ) (internal.Agent, error) {
 	result := &agent{
 		agentInfo: newAgentInfo(changeFeedID, captureID, changefeedEpoch),
 		tableM:    newTableSpanManager(changeFeedID, tableExecutor),
 		liveness:  liveness,
 		compat:    compat.New(cfg, map[model.CaptureID]*model.CaptureInfo{}),
+		LazyInit:  initProcessor,
+		ctx:       ctx,
 	}
 
 	etcdCliCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -172,7 +179,7 @@ func newAgent(
 }
 
 // NewAgent returns a new agent.
-func NewAgent(ctx context.Context,
+func NewAgent(ctx cdcContext.Context,
 	captureID model.CaptureID,
 	liveness *model.Liveness,
 	changeFeedID model.ChangeFeedID,
@@ -182,10 +189,11 @@ func NewAgent(ctx context.Context,
 	tableExecutor internal.TableExecutor,
 	changefeedEpoch uint64,
 	cfg *config.SchedulerConfig,
+	initProcessor func(ctx cdcContext.Context) error,
 ) (internal.Agent, error) {
 	result, err := newAgent(
 		ctx, captureID, liveness, changeFeedID, etcdClient, tableExecutor,
-		changefeedEpoch, cfg)
+		changefeedEpoch, cfg, initProcessor)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
@@ -208,7 +216,6 @@ func (a *agent) Tick(ctx context.Context) (*schedulepb.Barrier, error) {
 	}
 
 	outboundMessages, barrier := a.handleMessage(inboundMessages)
-
 	responses, err := a.tableM.poll(ctx)
 	if err != nil {
 		return nil, errors.Trace(err)
@@ -257,6 +264,7 @@ func (a *agent) handleMessage(msg []*schedulepb.Message) (
 			reMsg, barrier = a.handleMessageHeartbeat(message.GetHeartbeat())
 			result = append(result, reMsg)
 		case schedulepb.MsgDispatchTableRequest:
+			_ = a.LazyInit(a.ctx)
 			a.handleMessageDispatchTableRequest(message.DispatchTableRequest, processorEpoch)
 		default:
 			log.Warn("schedulerv3: unknown message received",
@@ -275,6 +283,10 @@ func (a *agent) handleMessageHeartbeat(request *schedulepb.Heartbeat) (
 	allTables := a.tableM.getAllTableSpans()
 	result := make([]tablepb.TableStatus, 0, allTables.Len())
 	allTables.Ascend(func(span tablepb.Span, table *tableSpan) bool {
+		err := a.LazyInit(a.ctx)
+		if err != nil {
+			return false
+		}
 		status := table.getTableSpanStatus(request.CollectStats)
 		if table.task != nil && table.task.IsRemove {
 			status.State = tablepb.TableStateStopping
@@ -283,6 +295,7 @@ func (a *agent) handleMessageHeartbeat(request *schedulepb.Heartbeat) (
 		return true
 	})
 	for _, span := range request.GetSpans() {
+		_ = a.LazyInit(a.ctx)
 		if _, ok := allTables.Get(span); !ok {
 			status := a.tableM.getTableSpanStatus(span, request.CollectStats)
 			result = append(result, status)

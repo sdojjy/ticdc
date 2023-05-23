@@ -39,6 +39,7 @@ type basicScheduler struct {
 	batchSize    int
 	random       *rand.Rand
 	changefeedID model.ChangeFeedID
+	oldCaptureID model.CaptureID
 }
 
 func newBasicScheduler(batchSize int, changefeed model.ChangeFeedID) *basicScheduler {
@@ -82,17 +83,46 @@ func (b *basicScheduler) Schedule(
 
 	// Build add table tasks.
 	if len(newSpans) > 0 {
-		captureIDs := make([]model.CaptureID, 0, len(captures))
-		for captureID, status := range captures {
-			if status.State == member.CaptureStateStopping {
-				log.Warn("schedulerv3: capture is stopping, "+
-					"skip the capture when add new table",
-					zap.String("namespace", b.changefeedID.Namespace),
-					zap.String("changefeed", b.changefeedID.ID),
-					zap.Any("captureStatus", status))
-				continue
+		captureIDs := make([]model.CaptureID, 0, 1)
+		if b.oldCaptureID != "" {
+			oldCapture, ok := captures[b.oldCaptureID]
+			if ok && oldCapture.State != member.CaptureStateStopping {
+				captureIDs = append(captureIDs, b.oldCaptureID)
+			} else {
+				var caps []model.CaptureID
+				for captureID, status := range captures {
+					if status.State == member.CaptureStateStopping {
+						log.Warn("schedulerv3: capture is stopping, "+
+							"skip the capture when add new table",
+							zap.String("namespace", b.changefeedID.Namespace),
+							zap.String("changefeed", b.changefeedID.ID),
+							zap.Any("captureStatus", status))
+						continue
+					}
+					caps = append(caps, captureID)
+				}
+				if len(caps) > 0 {
+					b.oldCaptureID = caps[b.random.Intn(len(caps))]
+					captureIDs = append(captureIDs, b.oldCaptureID)
+				}
 			}
-			captureIDs = append(captureIDs, captureID)
+		} else {
+			var caps []model.CaptureID
+			for captureID, status := range captures {
+				if status.State == member.CaptureStateStopping {
+					log.Warn("schedulerv3: capture is stopping, "+
+						"skip the capture when add new table",
+						zap.String("namespace", b.changefeedID.Namespace),
+						zap.String("changefeed", b.changefeedID.ID),
+						zap.Any("captureStatus", status))
+					continue
+				}
+				caps = append(caps, captureID)
+			}
+			if len(caps) > 0 {
+				b.oldCaptureID = caps[b.random.Intn(len(caps))]
+				captureIDs = append(captureIDs, b.oldCaptureID)
+			}
 		}
 
 		if len(captureIDs) == 0 {

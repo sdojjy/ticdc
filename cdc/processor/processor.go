@@ -81,7 +81,7 @@ type processor struct {
 
 	lazyInit func(ctx cdcContext.Context) error
 	newAgent func(
-		context.Context, *model.Liveness, uint64, *config.SchedulerConfig,
+		cdcContext.Context, *model.Liveness, uint64, *config.SchedulerConfig,
 	) (scheduler.Agent, error)
 	cfg *config.SchedulerConfig
 
@@ -587,9 +587,17 @@ func (p *processor) tick(ctx cdcContext.Context) error {
 	if err := p.handleErrorCh(); err != nil {
 		return errors.Trace(err)
 	}
-	if err := p.lazyInit(ctx); err != nil {
-		return errors.Trace(err)
+	if p.agent == nil {
+		var err error
+		p.agent, err = p.newAgent(ctx, p.liveness, p.changefeedEpoch, p.cfg)
+		if err != nil {
+			return err
+		}
 	}
+
+	//if err := p.lazyInit(ctx); err != nil {
+	//	return errors.Trace(err)
+	//}
 
 	barrier, err := p.agent.Tick(ctx)
 	if err != nil {
@@ -709,11 +717,6 @@ func (p *processor) lazyInitImpl(etcdCtx cdcContext.Context) (err error) {
 	// Bind them so that sourceManager can notify sinkManager.r.
 	p.sourceManager.r.OnResolve(p.sinkManager.r.UpdateReceivedSorterResolvedTs)
 
-	p.agent, err = p.newAgent(stdCtx, p.liveness, p.changefeedEpoch, p.cfg)
-	if err != nil {
-		return err
-	}
-
 	p.initialized = true
 	log.Info("processor initialized",
 		zap.String("capture", p.captureInfo.ID),
@@ -724,11 +727,17 @@ func (p *processor) lazyInitImpl(etcdCtx cdcContext.Context) (err error) {
 }
 
 func (p *processor) newAgentImpl(
-	ctx context.Context,
+	ctx cdcContext.Context,
 	liveness *model.Liveness,
 	changefeedEpoch uint64,
 	cfg *config.SchedulerConfig,
 ) (ret scheduler.Agent, err error) {
+	// Here we use a separated context for sub-components, so we can custom the
+	// order of stopping all sub-components when closing the processor.
+	prcCtx := cdcContext.NewContext(context.Background(), ctx.GlobalVars())
+	prcCtx = cdcContext.WithChangefeedVars(prcCtx, ctx.ChangefeedVars())
+	p.globalVars = prcCtx.GlobalVars()
+
 	messageServer := p.globalVars.MessageServer
 	messageRouter := p.globalVars.MessageRouter
 	etcdClient := p.globalVars.EtcdClient
@@ -736,7 +745,7 @@ func (p *processor) newAgentImpl(
 	ret, err = scheduler.NewAgent(
 		ctx, captureID, liveness,
 		messageServer, messageRouter, etcdClient, p, p.changefeedID,
-		changefeedEpoch, cfg)
+		changefeedEpoch, cfg, p.lazyInit)
 	return ret, errors.Trace(err)
 }
 
@@ -819,6 +828,9 @@ func (p *processor) initDDLHandler(ctx context.Context) error {
 
 // updateBarrierTs updates barrierTs for all tables.
 func (p *processor) updateBarrierTs(barrier *schedulepb.Barrier) {
+	if !p.initialized {
+		return
+	}
 	tableBarrier := p.calculateTableBarrierTs(barrier)
 	globalBarrierTs := barrier.GetGlobalBarrierTs()
 	// when redo is enable, globalBarrierTs must less than or equal to global resolvedTs
@@ -875,6 +887,9 @@ func (p *processor) removeTable(span tablepb.Span) {
 
 // doGCSchemaStorage trigger the schema storage GC
 func (p *processor) doGCSchemaStorage() {
+	if !p.initialized {
+		return
+	}
 	if p.ddlHandler.r.schemaStorage == nil {
 		// schemaStorage is nil only in test
 		return

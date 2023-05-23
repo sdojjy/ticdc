@@ -21,6 +21,7 @@ import (
 	v3 "github.com/pingcap/tiflow/cdc/scheduler/internal/v3"
 	v3agent "github.com/pingcap/tiflow/cdc/scheduler/internal/v3/agent"
 	"github.com/pingcap/tiflow/pkg/config"
+	cdcContext "github.com/pingcap/tiflow/pkg/context"
 	"github.com/pingcap/tiflow/pkg/etcd"
 	"github.com/pingcap/tiflow/pkg/p2p"
 	"github.com/pingcap/tiflow/pkg/upstream"
@@ -61,7 +62,7 @@ const CheckpointCannotProceed = internal.CheckpointCannotProceed
 
 // NewAgent returns two-phase agent.
 func NewAgent(
-	ctx context.Context,
+	ctx cdcContext.Context,
 	captureID model.CaptureID,
 	liveness *model.Liveness,
 	messageServer *p2p.MessageServer,
@@ -71,10 +72,11 @@ func NewAgent(
 	changefeedID model.ChangeFeedID,
 	changefeedEpoch uint64,
 	cfg *config.SchedulerConfig,
+	initProcessor func(ctx cdcContext.Context) error,
 ) (Agent, error) {
 	return v3agent.NewAgent(
 		ctx, captureID, liveness, changefeedID,
-		messageServer, messageRouter, etcdClient, executor, changefeedEpoch, cfg)
+		messageServer, messageRouter, etcdClient, executor, changefeedEpoch, cfg, initProcessor)
 }
 
 // NewScheduler returns two-phase scheduler.

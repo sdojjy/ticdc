@@ -65,46 +65,47 @@ func (r *rebalanceScheduler) Schedule(
 	if len(captures) == 0 {
 		return nil
 	}
+	return nil
+	/*
+		for _, capture := range captures {
+			if capture.State == member.CaptureStateStopping {
+				log.Warn("schedulerv3: capture is stopping, ignore manual rebalance request",
+					zap.String("namespace", r.changefeedID.Namespace),
+					zap.String("changefeed", r.changefeedID.ID))
+				atomic.StoreInt32(&r.rebalance, 0)
+				return nil
+			}
+		}
 
-	for _, capture := range captures {
-		if capture.State == member.CaptureStateStopping {
-			log.Warn("schedulerv3: capture is stopping, ignore manual rebalance request",
-				zap.String("namespace", r.changefeedID.Namespace),
-				zap.String("changefeed", r.changefeedID.ID))
+		// only rebalance when all tables are replicating
+		for _, span := range currentSpans {
+			rep, ok := replications.Get(span)
+			if !ok {
+				return nil
+			}
+			if rep.State != replication.ReplicationSetStateReplicating {
+				log.Debug("schedulerv3: not all table replicating, premature to rebalance tables",
+					zap.String("namespace", r.changefeedID.Namespace),
+					zap.String("changefeed", r.changefeedID.ID))
+				return nil
+			}
+		}
+
+		unlimited := math.MaxInt
+		tasks := newBalanceMoveTables(r.random, captures, replications, unlimited, r.changefeedID)
+		if len(tasks) == 0 {
+			return nil
+		}
+		accept := func() {
 			atomic.StoreInt32(&r.rebalance, 0)
-			return nil
-		}
-	}
-
-	// only rebalance when all tables are replicating
-	for _, span := range currentSpans {
-		rep, ok := replications.Get(span)
-		if !ok {
-			return nil
-		}
-		if rep.State != replication.ReplicationSetStateReplicating {
-			log.Debug("schedulerv3: not all table replicating, premature to rebalance tables",
+			log.Info("schedulerv3: manual rebalance request accepted",
 				zap.String("namespace", r.changefeedID.Namespace),
 				zap.String("changefeed", r.changefeedID.ID))
-			return nil
 		}
-	}
-
-	unlimited := math.MaxInt
-	tasks := newBalanceMoveTables(r.random, captures, replications, unlimited, r.changefeedID)
-	if len(tasks) == 0 {
-		return nil
-	}
-	accept := func() {
-		atomic.StoreInt32(&r.rebalance, 0)
-		log.Info("schedulerv3: manual rebalance request accepted",
-			zap.String("namespace", r.changefeedID.Namespace),
-			zap.String("changefeed", r.changefeedID.ID))
-	}
-	return []*replication.ScheduleTask{{
-		BurstBalance: &replication.BurstBalance{MoveTables: tasks},
-		Accept:       accept,
-	}}
+		return []*replication.ScheduleTask{{
+			BurstBalance: &replication.BurstBalance{MoveTables: tasks},
+			Accept:       accept,
+		}} */
 }
 
 func newBalanceMoveTables(
