@@ -59,6 +59,11 @@ func ChangefeedStatusKeyPrefix(clusterID, namespace string) string {
 	return NamespacedPrefix(clusterID, namespace) + ChangefeedStatusKey
 }
 
+// ChangefeedOwnerKeyPrefix is the prefix of changefeed owner keys
+func ChangefeedOwnerKeyPrefix(clusterID, namespace string) string {
+	return NamespacedPrefix(clusterID, namespace) + ChangefeedOwnerKey
+}
+
 // GetEtcdKeyChangeFeedList returns the prefix key of all changefeed config
 func GetEtcdKeyChangeFeedList(clusterID, namespace string) string {
 	return fmt.Sprintf("%s/changefeed/info", NamespacedPrefix(clusterID, namespace))
@@ -106,6 +111,10 @@ type CDCEtcdClient interface {
 	GetOwnerID(context.Context) (model.CaptureID, error)
 
 	GetOwnerRevision(context.Context, model.CaptureID) (int64, error)
+
+	GetChangefeedOwnerRevision(
+		ctx context.Context, changefeedID model.ChangeFeedID, captureID string,
+	) (rev int64, err error)
 
 	GetCaptures(context.Context) (int64, []*model.CaptureInfo, error)
 
@@ -597,6 +606,25 @@ func (c *CDCEtcdClientImpl) GetOwnerRevision(
 	if string(resp.Kvs[0].Value) != captureID {
 		return 0, cerror.ErrNotOwner.GenWithStackByArgs()
 	}
+	return resp.Kvs[0].ModRevision, nil
+}
+
+// GetChangefeedOwnerRevision gets the Etcd revision for the elected owner.
+func (c *CDCEtcdClientImpl) GetChangefeedOwnerRevision(
+	ctx context.Context, changefeedID model.ChangeFeedID, captureID string,
+) (rev int64, err error) {
+	resp, err := c.Client.Get(ctx, ChangefeedOwnerKeyPrefix(c.ClusterID, changefeedID.Namespace)+"/"+changefeedID.ID,
+		clientv3.WithFirstCreate()...)
+	if err != nil {
+		return 0, cerror.WrapError(cerror.ErrPDEtcdAPIError, err)
+	}
+	if len(resp.Kvs) == 0 {
+		return 0, cerror.ErrOwnerNotFound.GenWithStackByArgs()
+	}
+	// Checks that the given capture is indeed the owner.
+	//if string(resp.Kvs[0].Value) != captureID {
+	//	return 0, cerror.ErrNotOwner.GenWithStackByArgs()
+	//}
 	return resp.Kvs[0].ModRevision, nil
 }
 

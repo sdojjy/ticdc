@@ -459,7 +459,7 @@ func (c *captureImpl) campaignOwner(ctx cdcContext.Context) error {
 		// accidental modifications and potential race conditions.
 		globalVars := *ctx.GlobalVars()
 		newGlobalVars := &globalVars
-		newGlobalVars.OwnerRevision = ownerRev
+		newGlobalVars.GlobalOwnerRevision = ownerRev
 		ownerCtx := cdcContext.NewContext(ctx, newGlobalVars)
 
 		log.Info("campaign owner successfully",

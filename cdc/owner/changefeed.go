@@ -55,7 +55,7 @@ func newSchedulerFromCtx(
 	changeFeedID := ctx.ChangefeedVars().ID
 	messageServer := ctx.GlobalVars().MessageServer
 	messageRouter := ctx.GlobalVars().MessageRouter
-	ownerRev := ctx.GlobalVars().OwnerRevision
+	ownerRev := ctx.GlobalVars().GlobalOwnerRevision
 	captureID := ctx.GlobalVars().CaptureInfo.ID
 	ret, err = scheduler.NewScheduler(
 		ctx, captureID, changeFeedID, messageServer, messageRouter, ownerRev, epoch, up, cfg, redoMetaManager)
