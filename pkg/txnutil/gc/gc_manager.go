@@ -97,7 +97,7 @@ func (m *gcManager) TryUpdateGCSafePoint(
 		actual = uint64(val.(int))
 	})
 	if actual == checkpointTs {
-		log.Info("update gc safe point success", zap.Uint64("gcSafePointTs", checkpointTs))
+		//log.Info("update gc safe point success", zap.Uint64("gcSafePointTs", checkpointTs))
 	}
 	if actual > checkpointTs {
 		log.Warn("update gc safe point failed, the gc safe point is larger than checkpointTs",

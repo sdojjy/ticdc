@@ -134,22 +134,22 @@ const (
 
 // InitMetrics registers all metrics used in owner
 func InitMetrics(registry *prometheus.Registry) {
-	registry.MustRegister(changefeedBarrierTsGauge)
-
-	registry.MustRegister(changefeedCheckpointTsGauge)
-	registry.MustRegister(changefeedCheckpointTsLagGauge)
-	registry.MustRegister(changefeedCheckpointLagDuration)
-
-	registry.MustRegister(changefeedResolvedTsGauge)
-	registry.MustRegister(changefeedResolvedTsLagGauge)
-	registry.MustRegister(changefeedResolvedTsLagDuration)
-	registry.MustRegister(currentPDTsGauge)
-
-	registry.MustRegister(ownershipCounter)
-	registry.MustRegister(changefeedStatusGauge)
-	registry.MustRegister(changefeedTickDuration)
-	registry.MustRegister(changefeedCloseDuration)
-	registry.MustRegister(changefeedIgnoredDDLEventCounter)
+	//registry.MustRegister(changefeedBarrierTsGauge)
+	//
+	//registry.MustRegister(changefeedCheckpointTsGauge)
+	//registry.MustRegister(changefeedCheckpointTsLagGauge)
+	//registry.MustRegister(changefeedCheckpointLagDuration)
+	//
+	//registry.MustRegister(changefeedResolvedTsGauge)
+	//registry.MustRegister(changefeedResolvedTsLagGauge)
+	//registry.MustRegister(changefeedResolvedTsLagDuration)
+	//registry.MustRegister(currentPDTsGauge)
+	//
+	//registry.MustRegister(ownershipCounter)
+	//registry.MustRegister(changefeedStatusGauge)
+	//registry.MustRegister(changefeedTickDuration)
+	//registry.MustRegister(changefeedCloseDuration)
+	//registry.MustRegister(changefeedIgnoredDDLEventCounter)
 }
 
 // lagBucket returns the lag buckets for prometheus metric
