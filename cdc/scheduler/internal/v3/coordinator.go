@@ -383,10 +383,10 @@ func (c *coordinator) recvMsgs(ctx context.Context) ([]*schedulepb.Message, erro
 	n := 0
 	for _, msg := range recvMsgs {
 		// Filter stale messages and lost messages.
-		if msg.Header.OwnerRevision != c.revision || msg.To != c.captureID {
-			// Owner revision must match and capture ID must match.
-			continue
-		}
+		//if msg.Header.OwnerRevision != c.revision || msg.To != c.captureID {
+		// Owner revision must match and capture ID must match.
+		//continue
+		//}
 		if c.compat.CheckChangefeedEpochEnabled(msg.From) {
 			if msg.Header.ChangefeedEpoch.Epoch != c.changefeedEpoch {
 				// Changefeed epoch must match.

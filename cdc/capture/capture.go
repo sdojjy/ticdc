@@ -76,6 +76,7 @@ type captureImpl struct {
 	captureMu        sync.Mutex
 	info             *model.CaptureInfo
 	processorManager processor.Manager
+	globalOwner      owner.Owner
 	liveness         model.Liveness
 	config           *config.ServerConfig
 
@@ -116,7 +117,9 @@ type captureImpl struct {
 		liveness *model.Liveness,
 		cfg *config.SchedulerConfig,
 	) processor.Manager
-	newOwner func(upstreamManager *upstream.Manager, cfg *config.SchedulerConfig) owner.Owner
+	newOwner func(upstreamManager *upstream.Manager,
+		captureInfo *model.CaptureInfo,
+		cfg *config.SchedulerConfig) owner.Owner
 }
 
 // NewCapture returns a new Capture instance
@@ -215,6 +218,7 @@ func (c *captureImpl) reset(ctx context.Context) error {
 		// It can't be handled even after it fails, so we ignore it.
 		_ = c.session.Close()
 	}
+	c.owner = c.newOwner(c.upstreamManager, c.info, c.config.Debug.Scheduler)
 	c.session = sess
 	c.election = newElection(sess, etcd.CaptureOwnerKey(c.EtcdClient.GetClusterID()))
 
@@ -357,6 +361,19 @@ func (c *captureImpl) run(stdCtx context.Context) error {
 	})
 
 	g.Go(func() error {
+		processorFlushInterval := time.Duration(c.config.OwnerFlushInterval)
+
+		globalState := orchestrator.NewGlobalState(c.EtcdClient.GetClusterID())
+		// when the etcd worker of processor returns an error, it means that the processor throws an unrecoverable serious errors
+		// (recoverable errors are intercepted in the processor tick)
+		// so we should also stop the processor and let capture restart or exit
+		err := c.runEtcdWorker(ctx, c.owner, globalState, processorFlushInterval, util.RoleProcessor.String())
+		log.Info("processor routine exited",
+			zap.String("captureID", c.info.ID), zap.Error(err))
+		return err
+	})
+
+	g.Go(func() error {
 		return c.MessageServer.Run(ctx)
 	})
 
@@ -449,8 +466,7 @@ func (c *captureImpl) campaignOwner(ctx cdcContext.Context) error {
 			zap.String("captureID", c.info.ID),
 			zap.Int64("ownerRev", ownerRev))
 
-		owner := c.newOwner(c.upstreamManager, c.config.Debug.Scheduler)
-		c.setOwner(owner)
+		globalOwner := owner.NewGlobalOwner(c.upstreamManager)
 
 		globalState := orchestrator.NewGlobalState(c.EtcdClient.GetClusterID())
 
@@ -470,7 +486,7 @@ func (c *captureImpl) campaignOwner(ctx cdcContext.Context) error {
 			}
 		})
 
-		err = c.runEtcdWorker(ownerCtx, owner,
+		err = c.runEtcdWorker(ownerCtx, globalOwner,
 			orchestrator.NewGlobalState(c.EtcdClient.GetClusterID()),
 			ownerFlushInterval, util.RoleOwner.String())
 		c.owner.AsyncStop()

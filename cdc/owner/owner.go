@@ -122,11 +122,14 @@ type ownerImpl struct {
 		cfg *config.SchedulerConfig,
 	) *changefeed
 	cfg *config.SchedulerConfig
+
+	captureInfo *model.CaptureInfo
 }
 
 // NewOwner creates a new Owner
 func NewOwner(
 	upstreamManager *upstream.Manager,
+	captureInfo *model.CaptureInfo,
 	cfg *config.SchedulerConfig,
 ) Owner {
 	return &ownerImpl{
@@ -136,6 +139,7 @@ func NewOwner(
 		newChangefeed:   newChangefeed,
 		logLimiter:      rate.NewLimiter(versionInconsistentLogRate, versionInconsistentLogRate),
 		cfg:             cfg,
+		captureInfo:     captureInfo,
 	}
 }
 
@@ -171,9 +175,9 @@ func (o *ownerImpl) Tick(stdCtx context.Context, rawState orchestrator.ReactorSt
 	// initializing.
 	//
 	// See more gc doc.
-	if err = o.updateGCSafepoint(stdCtx, state); err != nil {
-		return nil, errors.Trace(err)
-	}
+	//if err = o.updateGCSafepoint(stdCtx, state); err != nil {
+	//	return nil, errors.Trace(err)
+	//}
 
 	// Tick all changefeeds.
 	ctx := stdCtx.(cdcContext.Context)
@@ -185,6 +189,13 @@ func (o *ownerImpl) Tick(stdCtx context.Context, rawState orchestrator.ReactorSt
 			}
 			continue
 		}
+		if changefeedState.Owner == nil || changefeedState.Owner.OwnerID != o.captureInfo.ID {
+			if c, exist := o.changefeeds[changefeedID]; exist {
+				c.Close(ctx)
+			}
+			continue
+		}
+
 		cfReactor, exist := o.changefeeds[changefeedID]
 		if !exist {
 			up, ok := o.upstreamManager.Get(changefeedState.Info.UpstreamID)
@@ -198,7 +209,10 @@ func (o *ownerImpl) Tick(stdCtx context.Context, rawState orchestrator.ReactorSt
 		ctx = cdcContext.WithChangefeedVars(ctx, &cdcContext.ChangefeedVars{
 			ID: changefeedID,
 		})
-		cfReactor.Tick(ctx, state.Captures)
+		captures := map[model.CaptureID]*model.CaptureInfo{
+			o.captureInfo.ID: o.captureInfo,
+		}
+		cfReactor.Tick(ctx, captures)
 	}
 	o.changefeedTicked = true
 
