@@ -64,6 +64,15 @@ type managerImpl struct {
 	commandQueue    chan *command
 	upstreamManager *upstream.Manager
 
+	changefeeds map[model.ChangeFeedID]*changefeed
+
+	newChangefeed func(
+		id model.ChangeFeedID,
+		state *orchestrator.ChangefeedReactorState,
+		up *upstream.Upstream,
+		cfg *config.SchedulerConfig,
+	) *changefeed
+
 	newProcessor func(
 		*orchestrator.ChangefeedReactorState,
 		*model.CaptureInfo,
@@ -94,6 +103,8 @@ func NewManager(
 		newProcessor:                 newProcessor,
 		metricProcessorCloseDuration: processorCloseDuration,
 		cfg:                          cfg,
+		newChangefeed:                newChangefeed,
+		changefeeds:                  map[model.ChangeFeedID]*changefeed{},
 	}
 }
 
@@ -112,6 +123,29 @@ func (m *managerImpl) Tick(stdCtx context.Context, state orchestrator.ReactorSta
 			m.closeProcessor(changefeedID)
 			continue
 		}
+		if changefeedState.Owner.OwnerID != m.captureInfo.ID {
+			m.closeProcessor(changefeedID)
+			continue
+		}
+
+		cfReactor, exist := m.changefeeds[changefeedID]
+		if !exist {
+			up, ok := m.upstreamManager.Get(changefeedState.Info.UpstreamID)
+			if !ok {
+				upstreamInfo := globalState.Upstreams[changefeedState.Info.UpstreamID]
+				up = m.upstreamManager.AddUpstream(upstreamInfo)
+			}
+			cfReactor = m.newChangefeed(changefeedID, changefeedState, up, m.cfg)
+			m.changefeeds[changefeedID] = cfReactor
+		}
+		ctx = cdcContext.WithChangefeedVars(ctx, &cdcContext.ChangefeedVars{
+			ID: changefeedID,
+		})
+		captures := map[model.CaptureID]*model.CaptureInfo{
+			m.captureInfo.ID: m.captureInfo,
+		}
+		cfReactor.Tick(ctx, captures)
+
 		currentChangefeedEpoch := changefeedState.Info.Epoch
 		p, exist := m.processors[changefeedID]
 		if !exist {

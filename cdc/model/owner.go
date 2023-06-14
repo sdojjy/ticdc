@@ -292,6 +292,21 @@ func (status *ChangeFeedStatus) Unmarshal(data []byte) error {
 		cerror.WrapError(cerror.ErrUnmarshalFailed, err), "Unmarshal data: %v", data)
 }
 
+type ChangeFeedOwner struct {
+	OwnerID string `json:"owner-id"`
+}
+
+func (co *ChangeFeedOwner) Marshal() (string, error) {
+	data, err := json.Marshal(co)
+	return string(data), cerror.WrapError(cerror.ErrMarshalFailed, err)
+}
+
+func (co *ChangeFeedOwner) Unmarshal(data []byte) error {
+	err := json.Unmarshal(data, co)
+	return errors.Annotatef(
+		cerror.WrapError(cerror.ErrUnmarshalFailed, err), "Unmarshal data: %v", data)
+}
+
 // ProcInfoSnap holds most important replication information of a processor
 type ProcInfoSnap struct {
 	CfID      ChangeFeedID `json:"changefeed-id"`

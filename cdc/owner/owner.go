@@ -26,7 +26,6 @@ import (
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/scheduler"
 	"github.com/pingcap/tiflow/pkg/config"
-	cdcContext "github.com/pingcap/tiflow/pkg/context"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/orchestrator"
 	"github.com/pingcap/tiflow/pkg/upstream"
@@ -94,8 +93,11 @@ type Owner interface {
 }
 
 type ownerImpl struct {
-	changefeeds     map[model.ChangeFeedID]*changefeed
-	captures        map[model.CaptureID]*model.CaptureInfo
+	changefeeds map[model.ChangeFeedID]*changefeed
+	captures    map[model.CaptureID]*model.CaptureInfo
+
+	assignedChangefeeds map[model.ChangeFeedID]model.ChangeFeedID
+
 	upstreamManager *upstream.Manager
 	ownerJobQueue   struct {
 		sync.Mutex
@@ -176,7 +178,12 @@ func (o *ownerImpl) Tick(stdCtx context.Context, rawState orchestrator.ReactorSt
 	}
 
 	// Tick all changefeeds.
-	ctx := stdCtx.(cdcContext.Context)
+	captureSizeMap := make(map[model.CaptureID]int)
+	for _, c := range state.Captures {
+		captureSizeMap[c.ID] = 0
+	}
+	var needAddsignedChangefeeds []*orchestrator.ChangefeedReactorState
+
 	for changefeedID, changefeedState := range state.Changefeeds {
 		if changefeedState.Info == nil {
 			o.cleanUpChangefeed(changefeedState)
@@ -185,41 +192,76 @@ func (o *ownerImpl) Tick(stdCtx context.Context, rawState orchestrator.ReactorSt
 			}
 			continue
 		}
-		cfReactor, exist := o.changefeeds[changefeedID]
-		if !exist {
-			up, ok := o.upstreamManager.Get(changefeedState.Info.UpstreamID)
-			if !ok {
-				upstreamInfo := state.Upstreams[changefeedState.Info.UpstreamID]
-				up = o.upstreamManager.AddUpstream(upstreamInfo)
-			}
-			cfReactor = o.newChangefeed(changefeedID, changefeedState, up, o.cfg)
-			o.changefeeds[changefeedID] = cfReactor
+		if changefeedState.Status == nil {
+			// complete the changefeed status when it is just created.
+			changefeedState.PatchStatus(
+				func(status *model.ChangeFeedStatus) (*model.ChangeFeedStatus, bool, error) {
+					if status == nil {
+						status = &model.ChangeFeedStatus{
+							// changefeed status is nil when the changefeed has just created.
+							ResolvedTs:        changefeedState.Info.StartTs,
+							CheckpointTs:      changefeedState.Info.StartTs,
+							MinTableBarrierTs: changefeedState.Info.StartTs,
+							AdminJobType:      model.AdminNone,
+						}
+						return status, true, nil
+					}
+					return status, false, nil
+				})
 		}
-		ctx = cdcContext.WithChangefeedVars(ctx, &cdcContext.ChangefeedVars{
-			ID: changefeedID,
-		})
-		cfReactor.Tick(ctx, state.Captures)
+		if changefeedState.Owner != nil {
+			_, ok := state.Captures[changefeedState.Owner.OwnerID]
+			if !ok {
+				needAddsignedChangefeeds = append(needAddsignedChangefeeds, changefeedState)
+			} else {
+				captureSizeMap[changefeedState.Owner.OwnerID] += 1
+			}
+		} else {
+			needAddsignedChangefeeds = append(needAddsignedChangefeeds, changefeedState)
+		}
 	}
+	for _, c := range needAddsignedChangefeeds {
+		//find smallest capture
+		var minCaptureID model.CaptureID
+		for captureID, _ := range captureSizeMap {
+			if minCaptureID == "" {
+				minCaptureID = captureID
+			} else {
+				if captureSizeMap[captureID] < captureSizeMap[minCaptureID] {
+					minCaptureID = captureID
+				}
+			}
+		}
+		c.PatchOwner(func(owner *model.ChangeFeedOwner) (*model.ChangeFeedOwner, bool, error) {
+			if owner == nil {
+				owner = &model.ChangeFeedOwner{}
+			}
+			owner.OwnerID = minCaptureID
+			return owner, true, nil
+		})
+		captureSizeMap[minCaptureID] += 1
+	}
+
 	o.changefeedTicked = true
 
 	// Cleanup changefeeds that are not in the state.
-	if len(o.changefeeds) != len(state.Changefeeds) {
-		for changefeedID, reactor := range o.changefeeds {
-			if _, exist := state.Changefeeds[changefeedID]; exist {
-				continue
-			}
-			reactor.Close(ctx)
-			delete(o.changefeeds, changefeedID)
-		}
-	}
+	//if len(o.changefeeds) != len(state.Changefeeds) {
+	//	for changefeedID, reactor := range o.changefeeds {
+	//		if _, exist := state.Changefeeds[changefeedID]; exist {
+	//			continue
+	//		}
+	//		reactor.Close(ctx)
+	//		delete(o.changefeeds, changefeedID)
+	//	}
+	//}
 
 	// Close and cleanup all changefeeds.
-	if atomic.LoadInt32(&o.closed) != 0 {
-		for _, reactor := range o.changefeeds {
-			reactor.Close(ctx)
-		}
-		return state, cerror.ErrReactorFinished.GenWithStackByArgs()
-	}
+	//if atomic.LoadInt32(&o.closed) != 0 {
+	//	for _, reactor := range o.changefeeds {
+	//		reactor.Close(ctx)
+	//	}
+	//	return state, cerror.ErrReactorFinished.GenWithStackByArgs()
+	//}
 
 	if err := o.upstreamManager.Tick(stdCtx, state); err != nil {
 		return state, errors.Trace(err)
