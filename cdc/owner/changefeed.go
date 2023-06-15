@@ -152,6 +152,8 @@ type changefeed struct {
 	) (observer.Observer, error)
 
 	lastDDLTs uint64 // Timestamp of the last executed DDL. Only used for tests.
+
+	lastCheckpointTsPersistTime time.Time
 }
 
 func newChangefeed(
@@ -971,8 +973,8 @@ func (c *changefeed) updateStatus(checkpointTs, resolvedTs, minTableBarrierTs mo
 			if status.MinTableBarrierTs != minTableBarrierTs {
 				status.MinTableBarrierTs = minTableBarrierTs
 			}
-			if time.Now().Sub(status.LastTime) > 10*time.Second {
-				status.LastTime = time.Now()
+			if time.Now().Sub(c.lastCheckpointTsPersistTime) > 10*time.Second {
+				c.lastCheckpointTsPersistTime = time.Now()
 				changed = true
 			}
 			return status, changed, nil

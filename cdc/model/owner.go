@@ -16,7 +16,6 @@ package model
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/pingcap/errors"
 	timodel "github.com/pingcap/tidb/parser/model"
@@ -278,8 +277,6 @@ type ChangeFeedStatus struct {
 	// initializing the changefeed.
 	MinTableBarrierTs uint64       `json:"min-table-barrier-ts"`
 	AdminJobType      AdminJobType `json:"admin-job-type"`
-
-	LastTime time.Time `json:"-"`
 }
 
 // Marshal returns json encoded string of ChangeFeedStatus, only contains necessary fields stored in storage
