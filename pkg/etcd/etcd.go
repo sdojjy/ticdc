@@ -15,6 +15,7 @@ package etcd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -110,10 +111,12 @@ type CDCEtcdClient interface {
 
 	GetOwnerID(context.Context) (model.CaptureID, error)
 
+	GetChangefeedOwnerID(ctx context.Context, changefeedID model.ChangeFeedID) (model.CaptureID, error)
+
 	GetOwnerRevision(context.Context, model.CaptureID) (int64, error)
 
 	GetChangefeedOwnerRevision(
-		ctx context.Context, changefeedID model.ChangeFeedID, captureID string,
+		ctx context.Context, changefeedID model.ChangeFeedID,
 	) (rev int64, err error)
 
 	GetCaptures(context.Context) (int64, []*model.CaptureInfo, error)
@@ -609,12 +612,26 @@ func (c *CDCEtcdClientImpl) GetOwnerRevision(
 	return resp.Kvs[0].ModRevision, nil
 }
 
+func (c *CDCEtcdClientImpl) GetChangefeedOwnerID(ctx context.Context, changefeedID model.ChangeFeedID) (model.CaptureID, error) {
+	resp, err := c.Client.Get(ctx, ChangefeedOwnerKeyPrefix(c.ClusterID, changefeedID.Namespace)+"/"+changefeedID.ID)
+	if err != nil {
+		return "", cerror.WrapError(cerror.ErrPDEtcdAPIError, err)
+	}
+	if len(resp.Kvs) == 0 {
+		return "", concurrency.ErrElectionNoLeader
+	}
+	co := model.ChangeFeedOwner{}
+	if json.Unmarshal(resp.Kvs[0].Value, &co) != nil {
+		return "", cerror.WrapError(cerror.ErrPDEtcdAPIError, err)
+	}
+	return co.OwnerID, nil
+}
+
 // GetChangefeedOwnerRevision gets the Etcd revision for the elected owner.
 func (c *CDCEtcdClientImpl) GetChangefeedOwnerRevision(
-	ctx context.Context, changefeedID model.ChangeFeedID, captureID string,
+	ctx context.Context, changefeedID model.ChangeFeedID,
 ) (rev int64, err error) {
-	resp, err := c.Client.Get(ctx, ChangefeedOwnerKeyPrefix(c.ClusterID, changefeedID.Namespace)+"/"+changefeedID.ID,
-		clientv3.WithFirstCreate()...)
+	resp, err := c.Client.Get(ctx, ChangefeedOwnerKeyPrefix(c.ClusterID, changefeedID.Namespace)+"/"+changefeedID.ID)
 	if err != nil {
 		return 0, cerror.WrapError(cerror.ErrPDEtcdAPIError, err)
 	}
