@@ -47,6 +47,8 @@ type StatusProvider interface {
 
 	// IsHealthy return true if the cluster is healthy
 	IsHealthy(ctx context.Context) (bool, error)
+
+	GetChangefeedOwner(ctx context.Context, changefeedID model.ChangeFeedID) (*model.CaptureInfo, error)
 }
 
 // QueryType is the type of different queries.
@@ -76,22 +78,30 @@ type Query struct {
 }
 
 // NewStatusProvider returns a new StatusProvider for the owner.
-func NewStatusProvider(owner Owner) StatusProvider {
-	return &ownerStatusProvider{owner: owner}
+func NewStatusProvider(owner Owner, globalOwner *GlobalOwner) StatusProvider {
+	return &ownerStatusProvider{owner: owner, globalOwner: globalOwner}
 }
 
 type ownerStatusProvider struct {
-	owner Owner
+	owner       Owner
+	globalOwner *GlobalOwner
 }
 
 func (p *ownerStatusProvider) GetAllChangeFeedStatuses(ctx context.Context) (map[model.ChangeFeedID]*model.ChangeFeedStatus, error) {
-	query := &Query{
-		Tp: QueryAllChangeFeedStatuses,
+	var status = make(map[model.ChangeFeedID]*model.ChangeFeedStatus)
+	//todo: lock
+	for k, s := range p.globalOwner.changefeeds {
+		status[k] = s.Status
 	}
-	if err := p.sendQueryToOwner(ctx, query); err != nil {
-		return nil, errors.Trace(err)
+	return status, nil
+}
+
+func (p *ownerStatusProvider) GetChangefeedOwner(ctx context.Context, changefeedID model.ChangeFeedID) (*model.CaptureInfo, error) {
+	s, ok := p.globalOwner.changefeeds[changefeedID]
+	if !ok {
+		return nil, errors.New("no changefeed found")
 	}
-	return query.Data.(map[model.ChangeFeedID]*model.ChangeFeedStatus), nil
+	return p.globalOwner.captures[s.Owner.OwnerID], nil
 }
 
 func (p *ownerStatusProvider) GetChangeFeedStatus(ctx context.Context, changefeedID model.ChangeFeedID) (*model.ChangeFeedStatus, error) {
@@ -107,13 +117,18 @@ func (p *ownerStatusProvider) GetChangeFeedStatus(ctx context.Context, changefee
 }
 
 func (p *ownerStatusProvider) GetAllChangeFeedInfo(ctx context.Context) (map[model.ChangeFeedID]*model.ChangeFeedInfo, error) {
-	query := &Query{
-		Tp: QueryAllChangeFeedInfo,
+	//query := &Query{
+	//	Tp: QueryAllChangeFeedInfo,
+	//}
+	//if err := p.sendQueryToOwner(ctx, query); err != nil {
+	//	return nil, errors.Trace(err)
+	//}
+	var info = make(map[model.ChangeFeedID]*model.ChangeFeedInfo)
+	//todo: queue and lock
+	for k, s := range p.globalOwner.changefeeds {
+		info[k] = s.Info
 	}
-	if err := p.sendQueryToOwner(ctx, query); err != nil {
-		return nil, errors.Trace(err)
-	}
-	return query.Data.(map[model.ChangeFeedID]*model.ChangeFeedInfo), nil
+	return info, nil
 }
 
 func (p *ownerStatusProvider) GetChangeFeedInfo(ctx context.Context, changefeedID model.ChangeFeedID) (*model.ChangeFeedInfo, error) {

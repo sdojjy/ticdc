@@ -76,13 +76,13 @@ type captureImpl struct {
 	captureMu        sync.Mutex
 	info             *model.CaptureInfo
 	processorManager processor.Manager
-	globalOwner      owner.Owner
 	liveness         model.Liveness
 	config           *config.ServerConfig
 
 	pdEndpoints     []string
 	ownerMu         sync.Mutex
 	owner           owner.Owner
+	globalOwner     *owner.GlobalOwner
 	upstreamManager *upstream.Manager
 
 	// session keeps alive between the capture and etcd
@@ -466,7 +466,7 @@ func (c *captureImpl) campaignOwner(ctx cdcContext.Context) error {
 			zap.String("captureID", c.info.ID),
 			zap.Int64("ownerRev", ownerRev))
 
-		globalOwner := owner.NewGlobalOwner(c.upstreamManager)
+		c.globalOwner = owner.NewGlobalOwner(c.upstreamManager)
 
 		globalState := orchestrator.NewGlobalState(c.EtcdClient.GetClusterID())
 
@@ -486,7 +486,7 @@ func (c *captureImpl) campaignOwner(ctx cdcContext.Context) error {
 			}
 		})
 
-		err = c.runEtcdWorker(ownerCtx, globalOwner,
+		err = c.runEtcdWorker(ownerCtx, c.globalOwner,
 			orchestrator.NewGlobalState(c.EtcdClient.GetClusterID()),
 			ownerFlushInterval, util.RoleOwner.String())
 		c.owner.AsyncStop()
@@ -703,7 +703,7 @@ func (c *captureImpl) WriteDebugInfo(ctx context.Context, w io.Writer) {
 func (c *captureImpl) IsOwner() bool {
 	c.ownerMu.Lock()
 	defer c.ownerMu.Unlock()
-	return c.owner != nil
+	return c.globalOwner != nil
 }
 
 // GetOwnerCaptureInfo return the owner capture info of current TiCDC cluster
@@ -733,7 +733,7 @@ func (c *captureImpl) StatusProvider() owner.StatusProvider {
 	if c.owner == nil {
 		return nil
 	}
-	return owner.NewStatusProvider(c.owner)
+	return owner.NewStatusProvider(c.owner, c.globalOwner)
 }
 
 func (c *captureImpl) IsReady() bool {

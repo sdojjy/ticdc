@@ -26,15 +26,15 @@ import (
 	"go.uber.org/zap"
 )
 
-type globalOwner struct {
+type GlobalOwner struct {
 	bootstrapped    bool
 	captures        map[model.CaptureID]*model.CaptureInfo
 	upstreamManager *upstream.Manager
 	changefeeds     map[model.ChangeFeedID]*orchestrator.ChangefeedReactorState
 }
 
-func NewGlobalOwner(manager *upstream.Manager) *globalOwner {
-	return &globalOwner{
+func NewGlobalOwner(manager *upstream.Manager) *GlobalOwner {
+	return &GlobalOwner{
 		captures:        make(map[model.CaptureID]*model.CaptureInfo),
 		changefeeds:     make(map[model.ChangeFeedID]*orchestrator.ChangefeedReactorState),
 		upstreamManager: manager,
@@ -42,12 +42,12 @@ func NewGlobalOwner(manager *upstream.Manager) *globalOwner {
 }
 
 // Bootstrap checks if the state contains incompatible or incorrect information and tries to fix it.
-func (o *globalOwner) Bootstrap(state *orchestrator.GlobalReactorState) {
+func (o *GlobalOwner) Bootstrap(state *orchestrator.GlobalReactorState) {
 	log.Info("Start bootstrapping")
 	fixChangefeedInfos(state)
 }
 
-func (o *globalOwner) clusterVersionConsistent(captures map[model.CaptureID]*model.CaptureInfo) bool {
+func (o *GlobalOwner) clusterVersionConsistent(captures map[model.CaptureID]*model.CaptureInfo) bool {
 	versions := make(map[string]struct{}, len(captures))
 	for _, capture := range captures {
 		versions[capture.Version] = struct{}{}
@@ -66,7 +66,7 @@ func (o *globalOwner) clusterVersionConsistent(captures map[model.CaptureID]*mod
 
 // ignoreFailedChangeFeedWhenGC checks if a failed changefeed should be ignored
 // when calculating the gc safepoint of the associated upstream.
-func (o *globalOwner) ignoreFailedChangeFeedWhenGC(
+func (o *GlobalOwner) ignoreFailedChangeFeedWhenGC(
 	state *orchestrator.ChangefeedReactorState,
 ) bool {
 	upID := state.Info.UpstreamID
@@ -88,7 +88,7 @@ func (o *globalOwner) ignoreFailedChangeFeedWhenGC(
 // Note: we need to maintain a TiCDC service GC safepoint for each upstream TiDB cluster
 // to prevent upstream TiDB GC from removing data that is still needed by TiCDC.
 // GcSafepoint is the minimum checkpointTs of all changefeeds that replicating a same upstream TiDB cluster.
-func (o *globalOwner) calculateGCSafepoint(state *orchestrator.GlobalReactorState) (
+func (o *GlobalOwner) calculateGCSafepoint(state *orchestrator.GlobalReactorState) (
 	map[uint64]uint64, map[uint64]interface{},
 ) {
 	minCheckpointTsMap := make(map[uint64]uint64)
@@ -131,7 +131,7 @@ func (o *globalOwner) calculateGCSafepoint(state *orchestrator.GlobalReactorStat
 	return minCheckpointTsMap, forceUpdateMap
 }
 
-func (o *globalOwner) updateGCSafepoint(
+func (o *GlobalOwner) updateGCSafepoint(
 	ctx context.Context, state *orchestrator.GlobalReactorState,
 ) error {
 	minChekpoinTsMap, forceUpdateMap := o.calculateGCSafepoint(state)
@@ -168,7 +168,7 @@ func (o *globalOwner) updateGCSafepoint(
 }
 
 // Tick implements the Reactor interface
-func (o *globalOwner) Tick(stdCtx context.Context, rawState orchestrator.ReactorState) (nextState orchestrator.ReactorState, err error) {
+func (o *GlobalOwner) Tick(stdCtx context.Context, rawState orchestrator.ReactorState) (nextState orchestrator.ReactorState, err error) {
 	failpoint.Inject("owner-run-with-error", func() {
 		failpoint.Return(nil, errors.New("owner run with injected error"))
 	})

@@ -91,6 +91,7 @@ type Owner interface {
 	WriteDebugInfo(w io.Writer, done chan<- error)
 	Query(query *Query, done chan<- error)
 	AsyncStop()
+	HasChangefeed(changefeedID model.ChangeFeedID) bool
 }
 
 type ownerImpl struct {
@@ -261,6 +262,11 @@ func (o *ownerImpl) RebalanceTables(cfID model.ChangeFeedID, done chan<- error) 
 		ChangefeedID: cfID,
 		done:         done,
 	})
+}
+
+func (o *ownerImpl) HasChangefeed(changefeedID model.ChangeFeedID) bool {
+	_, ok := o.changefeeds[changefeedID]
+	return ok
 }
 
 // ScheduleTable moves a table from a capture to another capture
