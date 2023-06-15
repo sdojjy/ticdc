@@ -960,14 +960,15 @@ func (c *changefeed) updateStatus(checkpointTs, resolvedTs, minTableBarrierTs mo
 			}
 			if status.ResolvedTs != resolvedTs {
 				status.ResolvedTs = resolvedTs
-				changed = true
 			}
 			if status.CheckpointTs != checkpointTs {
 				status.CheckpointTs = checkpointTs
-				changed = true
 			}
 			if status.MinTableBarrierTs != minTableBarrierTs {
 				status.MinTableBarrierTs = minTableBarrierTs
+			}
+			if time.Now().Sub(status.LastTime) > 10*time.Second {
+				status.LastTime = time.Now()
 				changed = true
 			}
 			return status, changed, nil
