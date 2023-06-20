@@ -600,6 +600,7 @@ func (o *ownerImpl) handleQueries(query *Query) error {
 				ID:            captureInfo.ID,
 				AdvertiseAddr: captureInfo.AdvertiseAddr,
 				Version:       captureInfo.Version,
+				Labels:        captureInfo.Labels,
 			})
 		}
 		query.Data = ret

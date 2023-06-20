@@ -230,6 +230,12 @@ func (m *feedStateManager) handleAdminJob() (jobsPending bool) {
 			) {
 				return nil, true, nil
 			})
+		// remove owner
+		m.state.PatchOwner(func(owner *model.ChangeFeedOwner) (
+			*model.ChangeFeedOwner, bool, error,
+		) {
+			return nil, true, nil
+		})
 		checkpointTs := m.state.Info.GetCheckpointTs(m.state.Status)
 
 		log.Info("the changefeed is removed",
