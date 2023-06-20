@@ -268,7 +268,6 @@ func (o *GlobalOwner) Tick(stdCtx context.Context, rawState orchestrator.Reactor
 			}
 		}
 		if minCaptureID == "" {
-			log.Warn("no capture can be assigned to changefeed", zap.String("changefeed", c.Info.ID))
 			continue
 		}
 		c.PatchOwner(func(owner *model.ChangeFeedOwner) (*model.ChangeFeedOwner, bool, error) {
@@ -296,6 +295,9 @@ func (o *GlobalOwner) Tick(stdCtx context.Context, rawState orchestrator.Reactor
 		var captureChangefeedMap = make(map[model.CaptureID][]*orchestrator.ChangefeedReactorState)
 		for _, c := range state.Changefeeds {
 			if c.Info == nil {
+				continue
+			}
+			if c.Owner == nil {
 				continue
 			}
 			captureChangefeedMap[c.Owner.OwnerID] = append(captureChangefeedMap[c.Owner.OwnerID], c)
