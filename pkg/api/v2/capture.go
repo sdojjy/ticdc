@@ -17,7 +17,6 @@ import (
 	"context"
 
 	v2 "github.com/pingcap/tiflow/cdc/api/v2"
-	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/pkg/api/internal/rest"
 )
 
@@ -45,8 +44,8 @@ func newCaptures(c *APIV2Client) *captures {
 }
 
 // List returns the list of captures
-func (c *captures) List(ctx context.Context) ([]model.Capture, error) {
-	result := &v2.ListResponse[model.Capture]{}
+func (c *captures) List(ctx context.Context) ([]v2.Capture, error) {
+	result := &v2.ListResponse[v2.Capture]{}
 	err := c.client.Get().
 		WithURI("captures").
 		Do(ctx).
