@@ -206,6 +206,9 @@ func (c *captureImpl) reset(ctx context.Context) error {
 	}
 	hostname, err := os.Hostname()
 	if err == nil {
+		if c.info.Labels == nil {
+			c.info.Labels = make(map[string]string)
+		}
 		c.info.Labels["host"] = hostname
 	} else {
 		log.Warn("failed to get hostname", zap.Error(err))
