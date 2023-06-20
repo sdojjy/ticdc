@@ -245,6 +245,20 @@ func (o *GlobalOwner) Tick(stdCtx context.Context, rawState orchestrator.Reactor
 		//find smallest capture
 		var minCaptureID model.CaptureID
 		for captureID, _ := range captureSizeMap {
+			// label selector
+			selected := true
+			if c.Info.Config.NodeSelector != nil {
+				for key, value := range c.Info.Config.NodeSelector {
+					if state.Captures[captureID].Labels[key] != value {
+						selected = false
+						break
+					}
+				}
+			}
+			if !selected {
+				continue
+			}
+
 			if minCaptureID == "" {
 				minCaptureID = captureID
 			} else {
@@ -252,6 +266,10 @@ func (o *GlobalOwner) Tick(stdCtx context.Context, rawState orchestrator.Reactor
 					minCaptureID = captureID
 				}
 			}
+		}
+		if minCaptureID == "" {
+			log.Warn("no capture can be assigned to changefeed", zap.String("changefeed", c.Info.ID))
+			continue
 		}
 		c.PatchOwner(func(owner *model.ChangeFeedOwner) (*model.ChangeFeedOwner, bool, error) {
 			if owner == nil {
