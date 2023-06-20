@@ -17,6 +17,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -201,6 +202,13 @@ func (c *captureImpl) reset(ctx context.Context) error {
 		ID:            uuid.New().String(),
 		AdvertiseAddr: c.config.AdvertiseAddr,
 		Version:       version.ReleaseVersion,
+		Labels:        c.config.Labels,
+	}
+	hostname, err := os.Hostname()
+	if err == nil {
+		c.info.Labels["host"] = hostname
+	} else {
+		log.Warn("failed to get hostname", zap.Error(err))
 	}
 
 	if c.upstreamManager != nil {

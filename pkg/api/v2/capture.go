@@ -29,7 +29,7 @@ type CapturesGetter interface {
 // CaptureInterface has methods to work with Capture items.
 // We can also mock the capture operations by implement this interface.
 type CaptureInterface interface {
-	List(ctx context.Context) ([]model.Capture, error)
+	List(ctx context.Context) ([]v2.Capture, error)
 }
 
 // captures implements CaptureInterface

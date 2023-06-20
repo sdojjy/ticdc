@@ -25,9 +25,10 @@ type CaptureID = string
 
 // CaptureInfo store in etcd.
 type CaptureInfo struct {
-	ID            CaptureID `json:"id"`
-	AdvertiseAddr string    `json:"address"`
-	Version       string    `json:"version"`
+	ID            CaptureID         `json:"id"`
+	AdvertiseAddr string            `json:"address"`
+	Version       string            `json:"version"`
+	Labels        map[string]string `json:"labels"`
 }
 
 // Marshal using json.Marshal.

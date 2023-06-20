@@ -911,10 +911,11 @@ type ServerStatus struct {
 
 // Capture holds common information of a capture in cdc
 type Capture struct {
-	ID            string `json:"id"`
-	IsOwner       bool   `json:"is_owner"`
-	AdvertiseAddr string `json:"address"`
-	ClusterID     string `json:"cluster_id"`
+	ID            string            `json:"id"`
+	IsOwner       bool              `json:"is_owner"`
+	AdvertiseAddr string            `json:"address"`
+	ClusterID     string            `json:"cluster_id"`
+	Labels        map[string]string `json:"labels"`
 }
 
 // CodecConfig represents a MQ codec configuration

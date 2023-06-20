@@ -113,6 +113,7 @@ func (h *OpenAPIV2) listCaptures(c *gin.Context) {
 				IsOwner:       isOwner,
 				AdvertiseAddr: c.AdvertiseAddr,
 				ClusterID:     etcdClient.GetClusterID(),
+				Labels:        c.Labels,
 			})
 	}
 	resp := &ListResponse[Capture]{
