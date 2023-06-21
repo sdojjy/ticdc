@@ -234,51 +234,44 @@ func (o *GlobalOwner) Tick(stdCtx context.Context, rawState orchestrator.Reactor
 			if !ok {
 				needAddsignedChangefeeds = append(needAddsignedChangefeeds, changefeedState)
 			} else {
+				//check if the node selector value is changed
+				newCaptureSet := make(map[model.CaptureID]struct{})
+				for _, capture := range state.Captures {
+					if canBindCapture(changefeedState, capture) {
+						newCaptureSet[capture.ID] = struct{}{}
+					}
+				}
+				noChange := len(newCaptureSet) == len(changefeedState.Owner.Captures)
+				if noChange {
+					for _, capture := range changefeedState.Owner.Captures {
+						if _, ok := newCaptureSet[capture]; !ok {
+							noChange = false
+							break
+						}
+					}
+				}
+				// some node selector value is changed, need to update the owner
+				if !noChange {
+					bindCaptureIDs := make([]model.CaptureID, 0, len(newCaptureSet))
+					for captureID := range newCaptureSet {
+						bindCaptureIDs = append(bindCaptureIDs, captureID)
+					}
+					changefeedState.PatchOwner(func(owner *model.ChangeFeedOwner) (*model.ChangeFeedOwner, bool, error) {
+						if owner == nil {
+							owner = &model.ChangeFeedOwner{}
+						}
+						owner.OwnerID = changefeedState.Owner.OwnerID
+						owner.Captures = bindCaptureIDs
+						return owner, true, nil
+					})
+				}
 				captureSizeMap[changefeedState.Owner.OwnerID] += 1
 			}
 		} else {
 			needAddsignedChangefeeds = append(needAddsignedChangefeeds, changefeedState)
 		}
 	}
-
-	for _, c := range needAddsignedChangefeeds {
-		//find smallest capture
-		var minCaptureID model.CaptureID
-		for captureID, _ := range captureSizeMap {
-			// label selector
-			selected := true
-			if c.Info.Config.NodeSelector != nil {
-				for key, value := range c.Info.Config.NodeSelector {
-					if state.Captures[captureID].Labels[key] != value {
-						selected = false
-						break
-					}
-				}
-			}
-			if !selected {
-				continue
-			}
-
-			if minCaptureID == "" {
-				minCaptureID = captureID
-			} else {
-				if captureSizeMap[captureID] < captureSizeMap[minCaptureID] {
-					minCaptureID = captureID
-				}
-			}
-		}
-		if minCaptureID == "" {
-			continue
-		}
-		c.PatchOwner(func(owner *model.ChangeFeedOwner) (*model.ChangeFeedOwner, bool, error) {
-			if owner == nil {
-				owner = &model.ChangeFeedOwner{}
-			}
-			owner.OwnerID = minCaptureID
-			return owner, true, nil
-		})
-		captureSizeMap[minCaptureID] += 1
-	}
+	bindChangefeed(needAddsignedChangefeeds, captureSizeMap, state.Captures)
 
 	// no changefeed capture llist
 	//rebalance changefeed
@@ -303,6 +296,9 @@ func (o *GlobalOwner) Tick(stdCtx context.Context, rawState orchestrator.Reactor
 			captureChangefeedMap[c.Owner.OwnerID] = append(captureChangefeedMap[c.Owner.OwnerID], c)
 		}
 		for capture, changefeeds := range captureChangefeedMap {
+			if len(changefeeds) <= avgCount {
+				continue
+			}
 			for _, c := range changefeeds[avgCount:] {
 				captureSizeMap[capture] -= 1
 				needBalanceChangefeeds = append(needBalanceChangefeeds, c)
@@ -312,27 +308,7 @@ func (o *GlobalOwner) Tick(stdCtx context.Context, rawState orchestrator.Reactor
 		if len(needBalanceChangefeeds) > 0 {
 			log.Info("relance changefeed", zap.Int("count", len(needBalanceChangefeeds)))
 		}
-		for _, c := range needBalanceChangefeeds {
-			//find smallest capture
-			var minCaptureID model.CaptureID
-			for captureID, _ := range captureSizeMap {
-				if minCaptureID == "" {
-					minCaptureID = captureID
-				} else {
-					if captureSizeMap[captureID] < captureSizeMap[minCaptureID] {
-						minCaptureID = captureID
-					}
-				}
-			}
-			c.PatchOwner(func(owner *model.ChangeFeedOwner) (*model.ChangeFeedOwner, bool, error) {
-				if owner == nil {
-					owner = &model.ChangeFeedOwner{}
-				}
-				owner.OwnerID = minCaptureID
-				return owner, true, nil
-			})
-			captureSizeMap[minCaptureID] += 1
-		}
+		bindChangefeed(needBalanceChangefeeds, captureSizeMap, state.Captures)
 	}
 
 	// Cleanup changefeeds that are not in the state.
@@ -345,8 +321,88 @@ func (o *GlobalOwner) Tick(stdCtx context.Context, rawState orchestrator.Reactor
 		}
 	}
 
+	/*for _, changefeedState := range state.Changefeeds {
+		unsigned := false
+		if changefeedState.Owner == nil {
+			unsigned = true
+		}
+		if !unsigned {
+			_, ok := state.Captures[changefeedState.Owner.OwnerID]
+			if !ok {
+				unsigned = true
+			}
+		}
+		if unsigned {
+			changefeedState.PatchOwner(func(owner *model.ChangeFeedOwner) (*model.ChangeFeedOwner, bool, error) {
+				if owner == nil {
+					return nil, false, nil
+				}
+				return nil, true, nil
+			})
+			changefeedState.PatchInfo(func(info *model.ChangeFeedInfo) (*model.ChangeFeedInfo, bool, error) {
+				if info == nil || info.State == model.StateUnAssigned {
+					return info, false, nil
+				}
+				info.State = model.StateUnAssigned
+				return info, true, nil
+			})
+		}
+	}*/
+
 	if err := o.upstreamManager.Tick(stdCtx, state); err != nil {
 		return state, errors.Trace(err)
 	}
 	return state, nil
+}
+
+func canBindCapture(changefeed *orchestrator.ChangefeedReactorState, capture *model.CaptureInfo) bool {
+	if len(changefeed.Info.Config.NodeSelector) == 0 {
+		return true
+	}
+	canBind := true
+	for key, value := range changefeed.Info.Config.NodeSelector {
+		if capture.Labels[key] != value {
+			canBind = false
+			break
+		}
+	}
+	return canBind
+}
+
+func bindChangefeed(needBalanceChangefeeds []*orchestrator.ChangefeedReactorState,
+	captureSizeMap map[model.CaptureID]int,
+	captures map[string]*model.CaptureInfo) map[model.ChangeFeedID]struct{} {
+	bindedChangefeed := make(map[model.ChangeFeedID]struct{})
+	for _, c := range needBalanceChangefeeds {
+		//find smallest capture
+		var minCaptureID model.CaptureID
+		var bindCaptureIDs []model.CaptureID
+		for captureID, _ := range captureSizeMap {
+			if !canBindCapture(c, captures[captureID]) {
+				continue
+			}
+			bindCaptureIDs = append(bindCaptureIDs, captureID)
+			if minCaptureID == "" {
+				minCaptureID = captureID
+			} else {
+				if captureSizeMap[captureID] < captureSizeMap[minCaptureID] {
+					minCaptureID = captureID
+				}
+			}
+		}
+		if minCaptureID == "" {
+			continue
+		}
+		c.PatchOwner(func(owner *model.ChangeFeedOwner) (*model.ChangeFeedOwner, bool, error) {
+			if owner == nil {
+				owner = &model.ChangeFeedOwner{}
+			}
+			owner.OwnerID = minCaptureID
+			owner.Captures = bindCaptureIDs
+			return owner, true, nil
+		})
+		captureSizeMap[minCaptureID] += 1
+		bindedChangefeed[c.ID] = struct{}{}
+	}
+	return bindedChangefeed
 }

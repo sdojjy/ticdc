@@ -68,7 +68,6 @@ func RegisterOpenAPIV2Routes(router *gin.Engine, api OpenAPIV2) {
 
 	// processor apis
 	processorGroup := v2.Group("/processors")
-	processorGroup.Use(middleware.ForwardToOwnerMiddleware(api.capture))
 	processorGroup.GET("/:changefeed_id/:capture_id", api.getProcessor)
 	processorGroup.GET("", api.listProcessors)
 

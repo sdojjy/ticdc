@@ -210,8 +210,9 @@ func (o *ownerImpl) Tick(stdCtx context.Context, rawState orchestrator.ReactorSt
 		ctx = cdcContext.WithChangefeedVars(ctx, &cdcContext.ChangefeedVars{
 			ID: changefeedID,
 		})
-		captures := map[model.CaptureID]*model.CaptureInfo{
-			o.captureInfo.ID: o.captureInfo,
+		captures := map[model.CaptureID]*model.CaptureInfo{}
+		for _, capture := range changefeedState.Owner.Captures {
+			captures[capture] = state.Captures[capture]
 		}
 		cfReactor.Tick(ctx, captures)
 	}

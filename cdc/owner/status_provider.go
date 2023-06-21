@@ -155,13 +155,20 @@ func (p *ownerStatusProvider) GetAllTaskStatuses(ctx context.Context, changefeed
 }
 
 func (p *ownerStatusProvider) GetProcessors(ctx context.Context) ([]*model.ProcInfoSnap, error) {
-	query := &Query{
-		Tp: QueryProcessors,
+	//todo: queue and lock
+	var ret []*model.ProcInfoSnap
+	for cfID, cfReactor := range p.globalOwner.changefeeds {
+		if cfReactor.Owner == nil {
+			continue
+		}
+		for _, captureID := range cfReactor.Owner.Captures {
+			ret = append(ret, &model.ProcInfoSnap{
+				CfID:      cfID,
+				CaptureID: captureID,
+			})
+		}
 	}
-	if err := p.sendQueryToOwner(ctx, query); err != nil {
-		return nil, errors.Trace(err)
-	}
-	return query.Data.([]*model.ProcInfoSnap), nil
+	return ret, nil
 }
 
 func (p *ownerStatusProvider) GetCaptures(ctx context.Context) ([]*model.CaptureInfo, error) {

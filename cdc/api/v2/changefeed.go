@@ -511,10 +511,6 @@ func (h *OpenAPIV2) updateChangefeed(c *gin.Context) {
 func (h *OpenAPIV2) getChangeFeed(c *gin.Context) {
 	if !h.capture.IsOwner() {
 		api.ForwardToOwner(c, h.capture)
-
-		// Without calling Abort(), Gin will continued to process the next handler,
-		// execute code which should only be run by the owner, and cause a panic.
-		// See https://github.com/pingcap/tiflow/issues/5888
 		c.Abort()
 		return
 	}
@@ -546,9 +542,15 @@ func (h *OpenAPIV2) getChangeFeed(c *gin.Context) {
 		_ = c.Error(err)
 		return
 	}
+	ow, err := h.capture.StatusProvider().GetChangefeedOwner(ctx, changefeedID)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
 
 	taskStatus := make([]model.CaptureTaskStatus, 0)
-	if cfInfo.State == model.StateNormal {
+	if ow != nil && cfInfo.State == model.StateNormal {
+		// todo : forward to changefeed owner if has changefeed owner
 		processorInfos, err := h.capture.StatusProvider().GetAllTaskStatuses(
 			ctx,
 			changefeedID,
@@ -614,6 +616,11 @@ func (h *OpenAPIV2) deleteChangefeed(c *gin.Context) {
 				_ = c.Error(err)
 				return
 			}
+			if ow == nil {
+				// changefeed not assigned to any capture
+				// todo : global owner delete that changefeed directly
+			}
+
 			api.ForwardToChangefeedOwner(c, ow.AdvertiseAddr)
 			c.Abort()
 			return

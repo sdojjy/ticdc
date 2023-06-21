@@ -299,7 +299,8 @@ type ProcInfoSnap struct {
 }
 
 type ChangeFeedOwner struct {
-	OwnerID string `json:"owner-id"`
+	OwnerID  string   `json:"owner-id"`
+	Captures []string `json:"captures"`
 }
 
 func (co *ChangeFeedOwner) Marshal() (string, error) {
