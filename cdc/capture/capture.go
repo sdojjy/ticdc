@@ -204,16 +204,19 @@ func (c *captureImpl) reset(ctx context.Context) error {
 		Version:       version.ReleaseVersion,
 		Labels:        c.config.Labels,
 	}
+	if c.info.Labels == nil {
+		c.info.Labels = make(map[string]string)
+	}
 	hostname, err := os.Hostname()
 	if err == nil {
-		if c.info.Labels == nil {
-			c.info.Labels = make(map[string]string)
-		}
 		c.info.Labels["host"] = hostname
 	} else {
 		log.Warn("failed to get hostname", zap.Error(err))
 	}
-
+	for _, e := range os.Environ() {
+		pair := strings.SplitN(e, "=", 2)
+		c.info.Labels[pair[0]] = pair[1]
+	}
 	if c.upstreamManager != nil {
 		c.upstreamManager.Close()
 	}
