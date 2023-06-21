@@ -136,6 +136,8 @@ type replicaConfig struct {
 	Scheduler *ChangefeedSchedulerConfig `toml:"scheduler" json:"scheduler"`
 	// Integrity is only available when the downstream is MQ.
 	Integrity *integrity.Config `toml:"integrity" json:"integrity"`
+
+	NodeSelector map[string]string `toml:"node-selector" json:"node-selector"`
 }
 
 // Marshal returns the json marshal format of a ReplicationConfig

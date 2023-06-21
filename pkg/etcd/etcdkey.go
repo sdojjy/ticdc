@@ -34,6 +34,8 @@ const (
 	ChangefeedInfoKey = "/changefeed/info"
 	// ChangefeedStatusKey is the key path for changefeed status
 	ChangefeedStatusKey = "/changefeed/status"
+	// ChangefeedStatusKey is the key path for changefeed status
+	ChangefeedOwnerKey = "/changefeed/owner"
 	// metaVersionKey is the key path for metadata version
 	metaVersionKey = "/meta/meta-version"
 	upstreamKey    = "/upstream"
@@ -60,6 +62,7 @@ const (
 	CDCKeyTypeCapture
 	CDCKeyTypeChangefeedInfo
 	CDCKeyTypeChangeFeedStatus
+	CDCKeyTypeChangeFeedOwner
 	CDCKeyTypeTaskPosition
 	CDCKeyTypeMetaVersion
 	CDCKeyTypeUpStream
@@ -167,6 +170,14 @@ func (k *CDCKey) Parse(clusterID, key string) error {
 				ID:        key[len(ChangefeedStatusKey)+1:],
 			}
 			k.OwnerLeaseID = ""
+		case strings.HasPrefix(key, ChangefeedOwnerKey):
+			k.Tp = CDCKeyTypeChangeFeedOwner
+			k.CaptureID = ""
+			k.ChangefeedID = model.ChangeFeedID{
+				Namespace: namespace,
+				ID:        key[len(ChangefeedOwnerKey)+1:],
+			}
+			k.OwnerLeaseID = ""
 		case strings.HasPrefix(key, taskPositionKey):
 			splitKey := strings.SplitN(key[len(taskPositionKey)+1:], "/", 2)
 			if len(splitKey) != 2 {
@@ -200,6 +211,9 @@ func (k *CDCKey) String() string {
 			"/" + k.ChangefeedID.ID
 	case CDCKeyTypeChangeFeedStatus:
 		return NamespacedPrefix(k.ClusterID, k.ChangefeedID.Namespace) + ChangefeedStatusKey +
+			"/" + k.ChangefeedID.ID
+	case CDCKeyTypeChangeFeedOwner:
+		return NamespacedPrefix(k.ClusterID, k.ChangefeedID.Namespace) + ChangefeedOwnerKey +
 			"/" + k.ChangefeedID.ID
 	case CDCKeyTypeTaskPosition:
 		return NamespacedPrefix(k.ClusterID, k.ChangefeedID.Namespace) + taskPositionKey +

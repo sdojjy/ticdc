@@ -17,7 +17,6 @@ import (
 	"context"
 
 	v2 "github.com/pingcap/tiflow/cdc/api/v2"
-	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/pkg/api/internal/rest"
 )
 
@@ -29,7 +28,7 @@ type CapturesGetter interface {
 // CaptureInterface has methods to work with Capture items.
 // We can also mock the capture operations by implement this interface.
 type CaptureInterface interface {
-	List(ctx context.Context) ([]model.Capture, error)
+	List(ctx context.Context) ([]v2.Capture, error)
 }
 
 // captures implements CaptureInterface
@@ -45,8 +44,8 @@ func newCaptures(c *APIV2Client) *captures {
 }
 
 // List returns the list of captures
-func (c *captures) List(ctx context.Context) ([]model.Capture, error) {
-	result := &v2.ListResponse[model.Capture]{}
+func (c *captures) List(ctx context.Context) ([]v2.Capture, error) {
+	result := &v2.ListResponse[v2.Capture]{}
 	err := c.client.Get().
 		WithURI("captures").
 		Do(ctx).

@@ -384,7 +384,7 @@ func (c *coordinator) recvMsgs(ctx context.Context) ([]*schedulepb.Message, erro
 	for _, msg := range recvMsgs {
 		// Filter stale messages and lost messages.
 		if msg.Header.OwnerRevision != c.revision || msg.To != c.captureID {
-			// Owner revision must match and capture ID must match.
+			//Owner revision must match and capture ID must match.
 			continue
 		}
 		if c.compat.CheckChangefeedEpochEnabled(msg.From) {

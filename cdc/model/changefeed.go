@@ -82,12 +82,13 @@ type FeedState string
 
 // All FeedStates
 const (
-	StateNormal   FeedState = "normal"
-	StateError    FeedState = "error"
-	StateFailed   FeedState = "failed"
-	StateStopped  FeedState = "stopped"
-	StateRemoved  FeedState = "removed"
-	StateFinished FeedState = "finished"
+	StateNormal     FeedState = "normal"
+	StateError      FeedState = "error"
+	StateFailed     FeedState = "failed"
+	StateStopped    FeedState = "stopped"
+	StateRemoved    FeedState = "removed"
+	StateFinished   FeedState = "finished"
+	StateUnAssigned FeedState = "unassigned"
 )
 
 // ToInt return an int for each `FeedState`, only use this for metrics.

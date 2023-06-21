@@ -104,7 +104,7 @@ func newAgent(
 	etcdCliCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	ownerCaptureID, err := etcdClient.GetOwnerID(etcdCliCtx)
+	ownerCaptureID, err := etcdClient.GetChangefeedOwnerID(etcdCliCtx, changeFeedID)
 	if err != nil {
 		if err != concurrency.ErrElectionNoLeader {
 			return nil, errors.Trace(err)
@@ -145,7 +145,7 @@ func newAgent(
 		zap.String("namespace", changeFeedID.Namespace),
 		zap.String("changefeed", changeFeedID.ID))
 
-	revision, err := etcdClient.GetOwnerRevision(etcdCliCtx, ownerCaptureID)
+	revision, err := etcdClient.GetChangefeedOwnerRevision(etcdCliCtx, changeFeedID)
 	if err != nil {
 		if errors.ErrOwnerNotFound.Equal(err) || errors.ErrNotOwner.Equal(err) {
 			// These are expected errors when no owner has been elected

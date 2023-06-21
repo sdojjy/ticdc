@@ -14,10 +14,12 @@
 package v2
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/pingcap/tiflow/cdc/api"
 	"github.com/pingcap/tiflow/cdc/model"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 )
@@ -44,6 +46,11 @@ func (h *OpenAPIV2) getProcessor(c *gin.Context) {
 				changefeedID.ID,
 			),
 		)
+		return
+	}
+
+	err, done := h.try2ForwardToChangefeedOwner(c, changefeedID, ctx)
+	if done {
 		return
 	}
 
@@ -120,6 +127,34 @@ func (h *OpenAPIV2) getProcessor(c *gin.Context) {
 	c.JSON(http.StatusOK, &processorDetail)
 }
 
+func (h *OpenAPIV2) try2ForwardToChangefeedOwner(c *gin.Context, changefeedID model.ChangeFeedID, ctx context.Context) (error, bool) {
+	o, err := h.capture.GetOwner()
+	if err != nil {
+		_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("can not get owner: %s",
+			changefeedID.ID))
+		return nil, true
+	}
+	if !o.HasChangefeed(changefeedID) {
+		if !h.capture.IsOwner() {
+			// forward to global owner
+			api.ForwardToOwner(c, h.capture)
+			c.Abort()
+			return nil, true
+		} else {
+			// forward to changefeed owner
+			ow, err := h.capture.StatusProvider().GetChangefeedOwner(ctx, changefeedID)
+			if err != nil {
+				_ = c.Error(err)
+				return nil, true
+			}
+			api.ForwardToChangefeedOwner(c, ow.AdvertiseAddr)
+			c.Abort()
+			return nil, true
+		}
+	}
+	return err, false
+}
+
 // listProcessors lists all processors in the TiCDC cluster
 // @Summary List processors
 // @Description list all processors in the TiCDC cluster
@@ -129,6 +164,10 @@ func (h *OpenAPIV2) getProcessor(c *gin.Context) {
 // @Failure 500,400 {object} model.HTTPError
 // @Router	/api/v2/processors [get]
 func (h *OpenAPIV2) listProcessors(c *gin.Context) {
+	if !h.capture.IsOwner() {
+		api.ForwardToOwner(c, h.capture)
+		return
+	}
 	ctx := c.Request.Context()
 	infos, err := h.capture.StatusProvider().GetProcessors(ctx)
 	if err != nil {

@@ -23,10 +23,11 @@ import (
 
 // capture holds capture information.
 type capture struct {
-	ID            string `json:"id"`
-	IsOwner       bool   `json:"is-owner"`
-	AdvertiseAddr string `json:"address"`
-	ClusterID     string `json:"cluster-id"`
+	ID            string            `json:"id"`
+	IsOwner       bool              `json:"is-owner"`
+	AdvertiseAddr string            `json:"address"`
+	ClusterID     string            `json:"cluster-id"`
+	Labels        map[string]string `json:"labels"`
 }
 
 // listCaptureOptions defines flags for the `cli capture list` command.
@@ -65,6 +66,7 @@ func (o *listCaptureOptions) run(cmd *cobra.Command) error {
 				IsOwner:       c.IsOwner,
 				AdvertiseAddr: c.AdvertiseAddr,
 				ClusterID:     c.ClusterID,
+				Labels:        c.Labels,
 			})
 	}
 

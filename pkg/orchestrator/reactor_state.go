@@ -90,6 +90,7 @@ func (s *GlobalReactorState) Update(key util.EtcdKey, value []byte, _ bool) erro
 		s.Captures[k.CaptureID] = &newCaptureInfo
 	case etcd.CDCKeyTypeChangefeedInfo,
 		etcd.CDCKeyTypeChangeFeedStatus,
+		etcd.CDCKeyTypeChangeFeedOwner,
 		etcd.CDCKeyTypeTaskPosition:
 		changefeedState, exist := s.Changefeeds[k.ChangefeedID]
 		if !exist {
@@ -157,6 +158,7 @@ type ChangefeedReactorState struct {
 	ID            model.ChangeFeedID
 	Info          *model.ChangeFeedInfo
 	Status        *model.ChangeFeedStatus
+	Owner         *model.ChangeFeedOwner
 	TaskPositions map[model.CaptureID]*model.TaskPosition
 
 	pendingPatches        []DataPatch
@@ -211,6 +213,16 @@ func (s *ChangefeedReactorState) UpdateCDCKey(key *etcd.CDCKey, value []byte) er
 		}
 		s.Status = new(model.ChangeFeedStatus)
 		e = s.Status
+	case etcd.CDCKeyTypeChangeFeedOwner:
+		if key.ChangefeedID != s.ID {
+			return nil
+		}
+		if value == nil {
+			s.Owner = nil
+			return nil
+		}
+		s.Owner = new(model.ChangeFeedOwner)
+		e = s.Owner
 	case etcd.CDCKeyTypeTaskPosition:
 		if key.ChangefeedID != s.ID {
 			return nil
@@ -319,6 +331,22 @@ func (s *ChangefeedReactorState) PatchInfo(fn func(*model.ChangeFeedInfo) (*mode
 	})
 }
 
+// PatchOwner appends a DataPatch which can modify the PatchOwner
+func (s *ChangefeedReactorState) PatchOwner(fn func(owner *model.ChangeFeedOwner) (*model.ChangeFeedOwner, bool, error)) {
+	key := &etcd.CDCKey{
+		ClusterID:    s.ClusterID,
+		Tp:           etcd.CDCKeyTypeChangeFeedOwner,
+		ChangefeedID: s.ID,
+	}
+	s.patchAny(key.String(), changefeedOwnerPI, func(e interface{}) (interface{}, bool, error) {
+		// e == nil means that the key is not exist before this patch
+		if e == nil {
+			return fn(nil)
+		}
+		return fn(e.(*model.ChangeFeedOwner))
+	})
+}
+
 // PatchStatus appends a DataPatch which can modify the ChangeFeedStatus
 func (s *ChangefeedReactorState) PatchStatus(fn func(*model.ChangeFeedStatus) (*model.ChangeFeedStatus, bool, error)) {
 	key := &etcd.CDCKey{
@@ -356,6 +384,7 @@ var (
 	taskPositionTPI     *model.TaskPosition
 	changefeedStatusTPI *model.ChangeFeedStatus
 	changefeedInfoTPI   *model.ChangeFeedInfo
+	changefeedOwnerPI   *model.ChangeFeedOwner
 )
 
 func (s *ChangefeedReactorState) patchAny(key string, tpi interface{}, fn func(interface{}) (interface{}, bool, error)) {

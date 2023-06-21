@@ -231,6 +231,65 @@ func ForwardToOwner(c *gin.Context, p capture.Capture) {
 	}
 }
 
+// ForwardToChangefeedOwner forwards a request to the changefeed owner
+func ForwardToChangefeedOwner(c *gin.Context, addr string) {
+	ctx := c.Request.Context()
+
+	security := config.GetGlobalServerConfig().Security
+
+	// init a request
+	req, err := http.NewRequestWithContext(
+		ctx, c.Request.Method, c.Request.RequestURI, c.Request.Body)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+
+	req.URL.Host = addr
+	// we should check tls config instead of security here because
+	// security will never be nil
+	if tls, _ := security.ToTLSConfigWithVerify(); tls != nil {
+		req.URL.Scheme = "https"
+	} else {
+		req.URL.Scheme = "http"
+	}
+	for k, v := range c.Request.Header {
+		for _, vv := range v {
+			req.Header.Add(k, vv)
+		}
+	}
+
+	// forward to owner
+	cli, err := httputil.NewClient(security)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	resp, err := cli.Do(req)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+
+	// write header
+	for k, values := range resp.Header {
+		for _, v := range values {
+			c.Header(k, v)
+		}
+	}
+
+	// write status code
+	c.Status(resp.StatusCode)
+
+	// write response body
+	defer resp.Body.Close()
+	_, err = bufio.NewReader(resp.Body).WriteTo(c.Writer)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+}
+
 // HandleOwnerDrainCapture schedule drain the target capture
 func HandleOwnerDrainCapture(
 	ctx context.Context, capture capture.Capture, captureID string,

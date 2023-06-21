@@ -59,6 +59,15 @@ const (
 // @Failure 500,400 {object} model.HTTPError
 // @Router	/api/v2/changefeeds [post]
 func (h *OpenAPIV2) createChangefeed(c *gin.Context) {
+	if !h.capture.IsOwner() {
+		api.ForwardToOwner(c, h.capture)
+
+		// Without calling Abort(), Gin will continued to process the next handler,
+		// execute code which should only be run by the owner, and cause a panic.
+		// See https://github.com/pingcap/tiflow/issues/5888
+		c.Abort()
+		return
+	}
 	ctx := c.Request.Context()
 	cfg := &ChangefeedConfig{ReplicaConfig: GetDefaultReplicaConfig()}
 
@@ -223,6 +232,15 @@ func hasRunningImport(ctx context.Context, cli *clientv3.Client) error {
 // @Failure 500 {object} model.HTTPError
 // @Router /api/v2/changefeeds [get]
 func (h *OpenAPIV2) listChangeFeeds(c *gin.Context) {
+	if !h.capture.IsOwner() {
+		api.ForwardToOwner(c, h.capture)
+
+		// Without calling Abort(), Gin will continued to process the next handler,
+		// execute code which should only be run by the owner, and cause a panic.
+		// See https://github.com/pingcap/tiflow/issues/5888
+		c.Abort()
+		return
+	}
 	ctx := c.Request.Context()
 	state := c.Query(apiOpVarChangefeedState)
 	statuses, err := h.capture.StatusProvider().GetAllChangeFeedStatuses(ctx)
@@ -372,6 +390,15 @@ func (h *OpenAPIV2) verifyTable(c *gin.Context) {
 // @Failure 500,400 {object} model.HTTPError
 // @Router /api/v2/changefeeds/{changefeed_id} [put]
 func (h *OpenAPIV2) updateChangefeed(c *gin.Context) {
+	if !h.capture.IsOwner() {
+		api.ForwardToOwner(c, h.capture)
+
+		// Without calling Abort(), Gin will continued to process the next handler,
+		// execute code which should only be run by the owner, and cause a panic.
+		// See https://github.com/pingcap/tiflow/issues/5888
+		c.Abort()
+		return
+	}
 	ctx := c.Request.Context()
 
 	namespace := getNamespaceValueWithDefault(c)
@@ -482,6 +509,11 @@ func (h *OpenAPIV2) updateChangefeed(c *gin.Context) {
 // @Failure 500,400 {object} model.HTTPError
 // @Router /api/v2/changefeeds/{changefeed_id} [get]
 func (h *OpenAPIV2) getChangeFeed(c *gin.Context) {
+	if !h.capture.IsOwner() {
+		api.ForwardToOwner(c, h.capture)
+		c.Abort()
+		return
+	}
 	ctx := c.Request.Context()
 	namespace := getNamespaceValueWithDefault(c)
 	changefeedID := model.ChangeFeedID{Namespace: namespace, ID: c.Param(apiOpVarChangefeedID)}
@@ -510,9 +542,15 @@ func (h *OpenAPIV2) getChangeFeed(c *gin.Context) {
 		_ = c.Error(err)
 		return
 	}
+	ow, err := h.capture.StatusProvider().GetChangefeedOwner(ctx, changefeedID)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
 
 	taskStatus := make([]model.CaptureTaskStatus, 0)
-	if cfInfo.State == model.StateNormal {
+	if ow != nil && cfInfo.State == model.StateNormal {
+		// todo : forward to changefeed owner if has changefeed owner
 		processorInfos, err := h.capture.StatusProvider().GetAllTaskStatuses(
 			ctx,
 			changefeedID,
@@ -559,14 +597,34 @@ func (h *OpenAPIV2) deleteChangefeed(c *gin.Context) {
 			changefeedID.ID))
 		return
 	}
-	_, err := h.capture.StatusProvider().GetChangeFeedStatus(ctx, changefeedID)
+	o, err := h.capture.GetOwner()
 	if err != nil {
-		if cerror.ErrChangeFeedNotExists.Equal(err) {
-			c.JSON(http.StatusOK, &EmptyResponse{})
+		_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("can not get owner: %s",
+			changefeedID.ID))
+		return
+	}
+	if !o.HasChangefeed(changefeedID) {
+		if !h.capture.IsOwner() {
+			// forward to global owner
+			api.ForwardToOwner(c, h.capture)
+			c.Abort()
+			return
+		} else {
+			// forward to changefeed owner
+			ow, err := h.capture.StatusProvider().GetChangefeedOwner(ctx, changefeedID)
+			if err != nil {
+				_ = c.Error(err)
+				return
+			}
+			if ow == nil {
+				// changefeed not assigned to any capture
+				// todo : global owner delete that changefeed directly
+			}
+
+			api.ForwardToChangefeedOwner(c, ow.AdvertiseAddr)
+			c.Abort()
 			return
 		}
-		_ = c.Error(err)
-		return
 	}
 
 	job := model.AdminJob{
@@ -677,10 +735,24 @@ func (h *OpenAPIV2) resumeChangefeed(c *gin.Context) {
 		return
 	}
 
-	_, err = h.capture.StatusProvider().GetChangeFeedInfo(ctx, changefeedID)
-	if err != nil {
-		_ = c.Error(err)
-		return
+	o, err := h.capture.GetOwner()
+	if !o.HasChangefeed(changefeedID) {
+		if !h.capture.IsOwner() {
+			// forward to global owner
+			api.ForwardToOwner(c, h.capture)
+			c.Abort()
+			return
+		} else {
+			// forward to changefeed owner
+			ow, err := h.capture.StatusProvider().GetChangefeedOwner(ctx, changefeedID)
+			if err != nil {
+				_ = c.Error(err)
+				return
+			}
+			api.ForwardToChangefeedOwner(c, ow.AdvertiseAddr)
+			c.Abort()
+			return
+		}
 	}
 
 	cfg := new(ResumeChangefeedConfig)
@@ -772,13 +844,29 @@ func (h *OpenAPIV2) pauseChangefeed(c *gin.Context) {
 			changefeedID.ID))
 		return
 	}
-	// check if the changefeed exists
-	_, err := h.capture.StatusProvider().GetChangeFeedStatus(ctx, changefeedID)
+	o, err := h.capture.GetOwner()
 	if err != nil {
 		_ = c.Error(err)
 		return
 	}
-
+	if !o.HasChangefeed(changefeedID) {
+		if !h.capture.IsOwner() {
+			// forward to global owner
+			api.ForwardToOwner(c, h.capture)
+			c.Abort()
+			return
+		} else {
+			// forward to changefeed owner
+			ow, err := h.capture.StatusProvider().GetChangefeedOwner(ctx, changefeedID)
+			if err != nil {
+				_ = c.Error(err)
+				return
+			}
+			api.ForwardToChangefeedOwner(c, ow.AdvertiseAddr)
+			c.Abort()
+			return
+		}
+	}
 	job := model.AdminJob{
 		CfID: changefeedID,
 		Type: model.AdminStop,

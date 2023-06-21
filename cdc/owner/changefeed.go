@@ -55,7 +55,11 @@ func newSchedulerFromCtx(
 	changeFeedID := ctx.ChangefeedVars().ID
 	messageServer := ctx.GlobalVars().MessageServer
 	messageRouter := ctx.GlobalVars().MessageRouter
-	ownerRev := ctx.GlobalVars().OwnerRevision
+	revision, err := ctx.GlobalVars().EtcdClient.GetChangefeedOwnerRevision(ctx, changeFeedID)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	ownerRev := revision
 	captureID := ctx.GlobalVars().CaptureInfo.ID
 	ret, err = scheduler.NewScheduler(
 		ctx, captureID, changeFeedID, messageServer, messageRouter, ownerRev, epoch, up, cfg, redoMetaManager)
@@ -148,6 +152,8 @@ type changefeed struct {
 	) (observer.Observer, error)
 
 	lastDDLTs uint64 // Timestamp of the last executed DDL. Only used for tests.
+
+	lastCheckpointTsPersistTime time.Time
 }
 
 func newChangefeed(
@@ -960,14 +966,15 @@ func (c *changefeed) updateStatus(checkpointTs, resolvedTs, minTableBarrierTs mo
 			}
 			if status.ResolvedTs != resolvedTs {
 				status.ResolvedTs = resolvedTs
-				changed = true
 			}
 			if status.CheckpointTs != checkpointTs {
 				status.CheckpointTs = checkpointTs
-				changed = true
 			}
 			if status.MinTableBarrierTs != minTableBarrierTs {
 				status.MinTableBarrierTs = minTableBarrierTs
+			}
+			if time.Now().Sub(c.lastCheckpointTsPersistTime) > 10*time.Second {
+				c.lastCheckpointTsPersistTime = time.Now()
 				changed = true
 			}
 			return status, changed, nil

@@ -17,6 +17,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -82,6 +83,7 @@ type captureImpl struct {
 	pdEndpoints     []string
 	ownerMu         sync.Mutex
 	owner           owner.Owner
+	globalOwner     *owner.GlobalOwner
 	upstreamManager *upstream.Manager
 
 	// session keeps alive between the capture and etcd
@@ -116,7 +118,9 @@ type captureImpl struct {
 		liveness *model.Liveness,
 		cfg *config.SchedulerConfig,
 	) processor.Manager
-	newOwner func(upstreamManager *upstream.Manager, cfg *config.SchedulerConfig) owner.Owner
+	newOwner func(upstreamManager *upstream.Manager,
+		captureInfo *model.CaptureInfo,
+		cfg *config.SchedulerConfig) owner.Owner
 }
 
 // NewCapture returns a new Capture instance
@@ -198,8 +202,21 @@ func (c *captureImpl) reset(ctx context.Context) error {
 		ID:            uuid.New().String(),
 		AdvertiseAddr: c.config.AdvertiseAddr,
 		Version:       version.ReleaseVersion,
+		Labels:        c.config.Labels,
 	}
-
+	if c.info.Labels == nil {
+		c.info.Labels = make(map[string]string)
+	}
+	hostname, err := os.Hostname()
+	if err == nil {
+		c.info.Labels["host"] = hostname
+	} else {
+		log.Warn("failed to get hostname", zap.Error(err))
+	}
+	for _, e := range os.Environ() {
+		pair := strings.SplitN(e, "=", 2)
+		c.info.Labels[pair[0]] = pair[1]
+	}
 	if c.upstreamManager != nil {
 		c.upstreamManager.Close()
 	}
@@ -215,6 +232,7 @@ func (c *captureImpl) reset(ctx context.Context) error {
 		// It can't be handled even after it fails, so we ignore it.
 		_ = c.session.Close()
 	}
+	c.owner = c.newOwner(c.upstreamManager, c.info, c.config.Debug.Scheduler)
 	c.session = sess
 	c.election = newElection(sess, etcd.CaptureOwnerKey(c.EtcdClient.GetClusterID()))
 
@@ -357,6 +375,19 @@ func (c *captureImpl) run(stdCtx context.Context) error {
 	})
 
 	g.Go(func() error {
+		processorFlushInterval := time.Duration(c.config.OwnerFlushInterval)
+
+		globalState := orchestrator.NewGlobalState(c.EtcdClient.GetClusterID())
+		// when the etcd worker of processor returns an error, it means that the processor throws an unrecoverable serious errors
+		// (recoverable errors are intercepted in the processor tick)
+		// so we should also stop the processor and let capture restart or exit
+		err := c.runEtcdWorker(ctx, c.owner, globalState, processorFlushInterval, util.RoleProcessor.String())
+		log.Info("processor routine exited",
+			zap.String("captureID", c.info.ID), zap.Error(err))
+		return err
+	})
+
+	g.Go(func() error {
 		return c.MessageServer.Run(ctx)
 	})
 
@@ -442,15 +473,14 @@ func (c *captureImpl) campaignOwner(ctx cdcContext.Context) error {
 		// accidental modifications and potential race conditions.
 		globalVars := *ctx.GlobalVars()
 		newGlobalVars := &globalVars
-		newGlobalVars.OwnerRevision = ownerRev
+		newGlobalVars.GlobalOwnerRevision = ownerRev
 		ownerCtx := cdcContext.NewContext(ctx, newGlobalVars)
 
 		log.Info("campaign owner successfully",
 			zap.String("captureID", c.info.ID),
 			zap.Int64("ownerRev", ownerRev))
 
-		owner := c.newOwner(c.upstreamManager, c.config.Debug.Scheduler)
-		c.setOwner(owner)
+		c.globalOwner = owner.NewGlobalOwner(c.upstreamManager)
 
 		globalState := orchestrator.NewGlobalState(c.EtcdClient.GetClusterID())
 
@@ -470,7 +500,7 @@ func (c *captureImpl) campaignOwner(ctx cdcContext.Context) error {
 			}
 		})
 
-		err = c.runEtcdWorker(ownerCtx, owner,
+		err = c.runEtcdWorker(ownerCtx, c.globalOwner,
 			orchestrator.NewGlobalState(c.EtcdClient.GetClusterID()),
 			ownerFlushInterval, util.RoleOwner.String())
 		c.owner.AsyncStop()
@@ -687,7 +717,7 @@ func (c *captureImpl) WriteDebugInfo(ctx context.Context, w io.Writer) {
 func (c *captureImpl) IsOwner() bool {
 	c.ownerMu.Lock()
 	defer c.ownerMu.Unlock()
-	return c.owner != nil
+	return c.globalOwner != nil
 }
 
 // GetOwnerCaptureInfo return the owner capture info of current TiCDC cluster
@@ -717,7 +747,7 @@ func (c *captureImpl) StatusProvider() owner.StatusProvider {
 	if c.owner == nil {
 		return nil
 	}
-	return owner.NewStatusProvider(c.owner)
+	return owner.NewStatusProvider(c.owner, c.globalOwner)
 }
 
 func (c *captureImpl) IsReady() bool {

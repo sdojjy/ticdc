@@ -37,8 +37,8 @@ type GlobalVars struct {
 	// SortEngineManager is introduced for pull-based sinks.
 	SortEngineFactory *factory.SortEngineFactory
 
-	// OwnerRevision is the Etcd revision when the owner got elected.
-	OwnerRevision int64
+	// GlobalOwnerRevision is the Etcd revision when the owner got elected.
+	GlobalOwnerRevision int64
 
 	// MessageServer and MessageRouter are for peer-messaging
 	MessageServer *p2p.MessageServer

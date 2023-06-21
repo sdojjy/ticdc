@@ -172,6 +172,8 @@ type ServerConfig struct {
 	Debug               *DebugConfig    `toml:"debug" json:"debug"`
 	ClusterID           string          `toml:"cluster-id" json:"cluster-id"`
 	MaxMemoryPercentage int             `toml:"max-memory-percentage" json:"max-memory-percentage"`
+
+	Labels map[string]string `toml:"labels"`
 }
 
 // Marshal returns the json marshal format of a ServerConfig

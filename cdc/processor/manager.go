@@ -112,6 +112,11 @@ func (m *managerImpl) Tick(stdCtx context.Context, state orchestrator.ReactorSta
 			m.closeProcessor(changefeedID)
 			continue
 		}
+		if changefeedState.Owner == nil || changefeedState.Owner.OwnerID != m.captureInfo.ID {
+			m.closeProcessor(changefeedID)
+			continue
+		}
+
 		currentChangefeedEpoch := changefeedState.Info.Epoch
 		p, exist := m.processors[changefeedID]
 		if !exist {
