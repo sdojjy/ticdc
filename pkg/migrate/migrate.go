@@ -159,14 +159,6 @@ func createPDClient(ctx context.Context,
 // 4. check metadata consistency
 // 5. update metaVersion
 func (m *migrator) migrate(ctx context.Context, etcdNoMetaVersion bool, oldVersion int) error {
-	pdClient, err := m.createPDClientFunc(ctx,
-		m.pdEndpoints, m.config.Security)
-	if err != nil {
-		return errors.Trace(err)
-	}
-	defer pdClient.Close()
-
-	upstreamID := pdClient.GetClusterID(ctx)
 	// 1.1 check metaVersion, if the metaVersion in etcd does not match
 	// m.oldMetaVersion, it means that someone has migrated the metadata
 	metaVersion, err := getMetaVersion(ctx, m.cli.GetEtcdClient(), m.cli.GetClusterID())
@@ -209,65 +201,76 @@ func (m *migrator) migrate(ctx context.Context, etcdNoMetaVersion bool, oldVersi
 		return cerror.WrapError(cerror.ErrEtcdMigrateFailed, err)
 	}
 
-	beforeKV := make(map[string][]byte)
-	// 4.campaign owner successfully, begin to migrate data
-	for oldPrefix, newPrefix := range m.keyPrefixes {
-		resp, err := m.cli.GetEtcdClient().Get(ctx, oldPrefix, clientV3.WithPrefix())
+	// only migrate metadata when there is a defauult upstream
+	if len(m.pdEndpoints) > 0 {
+		pdClient, err := m.createPDClientFunc(ctx,
+			m.pdEndpoints, m.config.Security)
 		if err != nil {
-			log.Error("get old meta data failed, etcd meta data migration failed",
-				zap.Error(err))
-			return cerror.WrapError(cerror.ErrEtcdMigrateFailed, err)
+			return errors.Trace(err)
 		}
-		for _, v := range resp.Kvs {
-			oldKey := string(v.Key)
-			newKey := newPrefix + oldKey[len(oldPrefix):]
-			beforeKV[newKey] = v.Value
-			log.Info("migrate key", zap.String("oldKey", oldKey), zap.String("newKey", newKey))
-			if strings.HasPrefix(string(v.Key), oldChangefeedPrefix) {
-				info := new(model.ChangeFeedInfo)
-				err = info.Unmarshal(v.Value)
-				if err != nil {
-					log.Error("unmarshal changefeed failed",
-						zap.String("value", string(v.Value)),
-						zap.Error(err))
-					return cerror.WrapError(cerror.ErrEtcdMigrateFailed, err)
-				}
-				info.UpstreamID = upstreamID
-				info.Namespace = model.DefaultNamespace
-				// changefeed id is a part of etcd key path
-				// for example:  /tidb/cdc/changefeed/info/abcd,  abcd is the changefeed
-				info.ID = strings.TrimPrefix(string(v.Key), oldChangefeedPrefix+"/")
-				var str string
-				str, err = info.Marshal()
-				if err != nil {
-					log.Error("marshal changefeed failed",
-						zap.Error(err))
-					return cerror.WrapError(cerror.ErrEtcdMigrateFailed, err)
-				}
-				_, err = m.cli.GetEtcdClient().Put(ctx, newKey, str)
-			} else {
-				_, err = m.cli.GetEtcdClient().Put(ctx, newKey, string(v.Value))
-			}
+		defer pdClient.Close()
+		upstreamID := pdClient.GetClusterID(ctx)
+
+		beforeKV := make(map[string][]byte)
+		// 4.campaign owner successfully, begin to migrate data
+		for oldPrefix, newPrefix := range m.keyPrefixes {
+			resp, err := m.cli.GetEtcdClient().Get(ctx, oldPrefix, clientV3.WithPrefix())
 			if err != nil {
-				log.Error("put new meta data failed, etcd meta data migration failed",
+				log.Error("get old meta data failed, etcd meta data migration failed",
 					zap.Error(err))
 				return cerror.WrapError(cerror.ErrEtcdMigrateFailed, err)
 			}
+			for _, v := range resp.Kvs {
+				oldKey := string(v.Key)
+				newKey := newPrefix + oldKey[len(oldPrefix):]
+				beforeKV[newKey] = v.Value
+				log.Info("migrate key", zap.String("oldKey", oldKey), zap.String("newKey", newKey))
+				if strings.HasPrefix(string(v.Key), oldChangefeedPrefix) {
+					info := new(model.ChangeFeedInfo)
+					err = info.Unmarshal(v.Value)
+					if err != nil {
+						log.Error("unmarshal changefeed failed",
+							zap.String("value", string(v.Value)),
+							zap.Error(err))
+						return cerror.WrapError(cerror.ErrEtcdMigrateFailed, err)
+					}
+					info.UpstreamID = upstreamID
+					info.Namespace = model.DefaultNamespace
+					// changefeed id is a part of etcd key path
+					// for example:  /tidb/cdc/changefeed/info/abcd,  abcd is the changefeed
+					info.ID = strings.TrimPrefix(string(v.Key), oldChangefeedPrefix+"/")
+					var str string
+					str, err = info.Marshal()
+					if err != nil {
+						log.Error("marshal changefeed failed",
+							zap.Error(err))
+						return cerror.WrapError(cerror.ErrEtcdMigrateFailed, err)
+					}
+					_, err = m.cli.GetEtcdClient().Put(ctx, newKey, str)
+				} else {
+					_, err = m.cli.GetEtcdClient().Put(ctx, newKey, string(v.Value))
+				}
+				if err != nil {
+					log.Error("put new meta data failed, etcd meta data migration failed",
+						zap.Error(err))
+					return cerror.WrapError(cerror.ErrEtcdMigrateFailed, err)
+				}
+			}
 		}
-	}
-	// put upstream id
-	err = m.saveUpstreamInfo(ctx)
-	if err != nil {
-		log.Error("save default upstream failed, "+
-			"etcd meta data migration failed", zap.Error(err))
-		return cerror.WrapError(cerror.ErrEtcdMigrateFailed, err)
-	}
+		// put upstream id
+		err = m.saveUpstreamInfo(ctx)
+		if err != nil {
+			log.Error("save default upstream failed, "+
+				"etcd meta data migration failed", zap.Error(err))
+			return cerror.WrapError(cerror.ErrEtcdMigrateFailed, err)
+		}
 
-	err = m.migrateGcServiceSafePoint(ctx, pdClient,
-		m.config.Security, m.cli.GetGCServiceID(), m.config.GcTTL)
-	if err != nil {
-		log.Error("update meta version failed, etcd meta data migration failed", zap.Error(err))
-		return cerror.WrapError(cerror.ErrEtcdMigrateFailed, err)
+		err = m.migrateGcServiceSafePoint(ctx, pdClient,
+			m.config.Security, m.cli.GetGCServiceID(), m.config.GcTTL)
+		if err != nil {
+			log.Error("update meta version failed, etcd meta data migration failed", zap.Error(err))
+			return cerror.WrapError(cerror.ErrEtcdMigrateFailed, err)
+		}
 	}
 
 	// 5. update metaVersion

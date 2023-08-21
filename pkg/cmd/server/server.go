@@ -83,7 +83,7 @@ func (o *options) addFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&o.serverConfig.Sorter.SortDir, "sort-dir", o.serverConfig.Sorter.SortDir, "sorter's temporary file directory")
 	_ = cmd.Flags().MarkHidden("sort-dir")
 
-	cmd.Flags().StringVar(&o.serverPdAddr, "pd", "http://127.0.0.1:2379", "Set the PD endpoints to use. Use ',' to separate multiple PDs")
+	cmd.Flags().StringVar(&o.serverPdAddr, "pd", "", "Set the PD endpoints to use. Use ',' to separate multiple PDs")
 	cmd.Flags().StringVar(&o.serverConfigFilePath, "config", "", "Path of the configuration file")
 
 	cmd.Flags().StringVar(&o.caPath, "ca", "", "CA certificate path for TLS connection")
@@ -125,7 +125,11 @@ func (o *options) run(cmd *cobra.Command) error {
 
 	util.LogHTTPProxies()
 	server.RecordGoRuntimeSettings()
-	server, err := server.New(strings.Split(o.serverPdAddr, ","))
+	var defaultUpstreamEndpoints []string
+	if len(o.serverPdAddr) > 0 {
+		defaultUpstreamEndpoints = strings.Split(o.serverPdAddr, ",")
+	}
+	server, err := server.New(defaultUpstreamEndpoints)
 	if err != nil {
 		log.Error("create cdc server failed", zap.Error(err))
 		return errors.Trace(err)
@@ -228,14 +232,13 @@ func (o *options) complete(cmd *cobra.Command) error {
 
 // validate checks that the provided attach options are specified.
 func (o *options) validate() error {
-	if len(o.serverPdAddr) == 0 {
-		return cerror.ErrInvalidServerOption.GenWithStack("empty PD address")
-	}
-	for _, ep := range strings.Split(o.serverPdAddr, ",") {
-		// NOTICE: The configuration used here is the one that has been completed,
-		// as it may be configured by the configuration file.
-		if err := util.VerifyPdEndpoint(ep, o.serverConfig.Security.IsTLSEnabled()); err != nil {
-			return cerror.WrapError(cerror.ErrInvalidServerOption, err)
+	if len(o.serverPdAddr) > 0 {
+		for _, ep := range strings.Split(o.serverPdAddr, ",") {
+			// NOTICE: The configuration used here is the one that has been completed,
+			// as it may be configured by the configuration file.
+			if err := util.VerifyPdEndpoint(ep, o.serverConfig.Security.IsTLSEnabled()); err != nil {
+				return cerror.WrapError(cerror.ErrInvalidServerOption, err)
+			}
 		}
 	}
 	return nil

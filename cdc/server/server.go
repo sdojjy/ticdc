@@ -79,13 +79,13 @@ type Server interface {
 // TODO: we need to make server more unit testable and add more test cases.
 // Especially we need to decouple the HTTPServer out of server.
 type server struct {
-	capture           capture.Capture
-	tcpServer         tcpserver.TCPServer
-	grpcService       *p2p.ServerWrapper
-	statusServer      *http.Server
-	etcdClient        etcd.CDCEtcdClient
-	pdEndpoints       []string
-	sortEngineFactory *factory.SortEngineFactory
+	capture            capture.Capture
+	tcpServer          tcpserver.TCPServer
+	grpcService        *p2p.ServerWrapper
+	statusServer       *http.Server
+	etcdClient         etcd.CDCEtcdClient
+	defaultPdEndpoints []string
+	sortEngineFactory  *factory.SortEngineFactory
 }
 
 // New creates a server instance.
@@ -112,9 +112,9 @@ func New(pdEndpoints []string) (*server, error) {
 
 	debugConfig := config.GetGlobalServerConfig().Debug
 	s := &server{
-		pdEndpoints: pdEndpoints,
-		grpcService: p2p.NewServerWrapper(debugConfig.Messages.ToMessageServerConfig()),
-		tcpServer:   tcpServer,
+		defaultPdEndpoints: pdEndpoints,
+		grpcService:        p2p.NewServerWrapper(debugConfig.Messages.ToMessageServerConfig()),
+		tcpServer:          tcpServer,
 	}
 
 	log.Info("CDC server created",
@@ -140,7 +140,7 @@ func (s *server) prepare(ctx context.Context) error {
 	logConfig := logutil.DefaultZapLoggerConfig
 	logConfig.Level = zap.NewAtomicLevelAt(zapcore.ErrorLevel)
 
-	metastoreEndpoints := s.pdEndpoints
+	metastoreEndpoints := s.defaultPdEndpoints
 	if conf.MetastoreConfig.IsEnableExternalMetastore() {
 		metastoreEndpoints = strings.Split(conf.MetastoreConfig.URI, ",")
 	}
@@ -200,7 +200,7 @@ func (s *server) prepare(ctx context.Context) error {
 	}
 
 	s.capture = capture.NewCapture(
-		s.pdEndpoints, cdcEtcdClient, s.grpcService, s.sortEngineFactory)
+		s.defaultPdEndpoints, cdcEtcdClient, s.grpcService, s.sortEngineFactory)
 
 	return nil
 }
@@ -298,16 +298,18 @@ func (s *server) startStatusHTTP(lis net.Listener) error {
 
 func (s *server) etcdHealthChecker(ctx context.Context) error {
 	conf := config.GetGlobalServerConfig()
-	grpcClient, err := pd.NewClientWithContext(ctx, s.pdEndpoints, conf.Security.PDSecurityOption())
-	if err != nil {
-		return errors.Trace(err)
+	var pc pdutil.PDAPIClient
+	if len(s.defaultPdEndpoints) > 0 {
+		grpcClient, err := pd.NewClientWithContext(ctx, s.defaultPdEndpoints, conf.Security.PDSecurityOption())
+		if err != nil {
+			return errors.Trace(err)
+		}
+		pc, err := pdutil.NewPDAPIClient(grpcClient, conf.Security)
+		if err != nil {
+			return errors.Trace(err)
+		}
+		defer pc.Close()
 	}
-	pc, err := pdutil.NewPDAPIClient(grpcClient, conf.Security)
-	if err != nil {
-		return errors.Trace(err)
-	}
-	defer pc.Close()
-
 	ticker := time.NewTicker(time.Second * 3)
 	defer ticker.Stop()
 
@@ -316,24 +318,26 @@ func (s *server) etcdHealthChecker(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			endpoints, err := pc.CollectMemberEndpoints(ctx)
-			if err != nil {
-				log.Warn("etcd health check: cannot collect all members", zap.Error(err))
-				continue
-			}
-			for _, endpoint := range endpoints {
-				start := time.Now()
-				ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-				if err := pc.Healthy(ctx, endpoint); err != nil {
-					log.Warn("etcd health check error",
-						zap.String("endpoint", endpoint), zap.Error(err))
+			if pc != nil {
+				endpoints, err := pc.CollectMemberEndpoints(ctx)
+				if err != nil {
+					log.Warn("etcd health check: cannot collect all members", zap.Error(err))
+					continue
 				}
-				etcdHealthCheckDuration.WithLabelValues(endpoint).
-					Observe(time.Since(start).Seconds())
-				cancel()
+				for _, endpoint := range endpoints {
+					start := time.Now()
+					ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+					if err := pc.Healthy(ctx, endpoint); err != nil {
+						log.Warn("etcd health check error",
+							zap.String("endpoint", endpoint), zap.Error(err))
+					}
+					etcdHealthCheckDuration.WithLabelValues(endpoint).
+						Observe(time.Since(start).Seconds())
+					cancel()
+				}
 			}
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			_, err = s.etcdClient.GetEtcdClient().Unwrap().MemberList(ctx)
+			_, err := s.etcdClient.GetEtcdClient().Unwrap().MemberList(ctx)
 			cancel()
 			if err != nil {
 				log.Warn("etcd health check error, fail to list etcd members", zap.Error(err))

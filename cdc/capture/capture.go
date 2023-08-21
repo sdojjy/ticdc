@@ -227,9 +227,11 @@ func (c *captureImpl) reset(ctx context.Context) error {
 		c.upstreamManager.Close()
 	}
 	c.upstreamManager = upstream.NewManager(ctx, c.EtcdClient.GetGCServiceID())
-	_, err = c.upstreamManager.AddDefaultUpstream(c.pdEndpoints, c.config.Security)
-	if err != nil {
-		return errors.Trace(err)
+	if len(c.pdEndpoints) > 0 {
+		_, err = c.upstreamManager.AddDefaultUpstream(c.pdEndpoints, c.config.Security)
+		if err != nil {
+			return errors.Trace(err)
+		}
 	}
 
 	c.processorManager = c.newProcessorManager(

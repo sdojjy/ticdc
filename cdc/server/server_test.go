@@ -73,7 +73,7 @@ func newServer(t *testing.T) *testServer {
 
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	client, err := clientv3.New(clientv3.Config{
-		Endpoints:   s.server.pdEndpoints,
+		Endpoints:   s.server.defaultPdEndpoints,
 		Context:     s.ctx,
 		DialTimeout: 5 * time.Second,
 	})
