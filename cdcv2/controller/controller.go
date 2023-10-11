@@ -128,6 +128,7 @@ func (o *controllerImpl) Run(stdCtx context.Context) error {
 	for {
 		select {
 		case <-stdCtx.Done():
+			return stdCtx.Err()
 		case <-tick:
 			changefeeds, captures, err := o.controllerObservation.ScheduleSnapshot()
 			if err != nil {

@@ -134,6 +134,8 @@ var defaultServerConfig = &ServerConfig{
 
 		Scheduler:              NewDefaultSchedulerConfig(),
 		EnableKVConnectBackOff: false,
+		EnableCaptureV2:        false,
+		MetaStoreConfig:        &MetaStoreConfig{},
 	},
 	ClusterID:              "default",
 	GcTunerMemoryThreshold: DisableMemoryLimit,

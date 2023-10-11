@@ -267,7 +267,7 @@ func (c *captureImpl) reset(ctx context.Context) error {
 
 	c.MessageRouter = p2p.NewMessageRouterWithLocalClient(c.info.ID, c.config.Security, messageClientConfig)
 
-	c.storage, err = sql.Open("mysql", "root:@tcp(localhost:3306)/cdc?parseTime=true")
+	c.storage, err = sql.Open("mysql", c.config.Debug.MetaStoreConfig.DSN)
 	if err != nil {
 		return errors.Trace(err)
 	}
