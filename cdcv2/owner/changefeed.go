@@ -69,10 +69,10 @@ func (c *changefeedImpl) Tick(ctx cdcContext.Context, info *model.ChangeFeedInfo
 	})
 	err, warning := c.processor.Tick(ctx, info, status)
 	if err != nil {
-
+		log.Error("changefeed processor tick failed", zap.Error(err))
 	}
 	if warning != nil {
-
+		log.Warn("changefeed processor tick warning", zap.Error(warning))
 	}
 	return c.changefeed.Tick(ctx, info, status, captures)
 }

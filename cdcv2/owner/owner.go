@@ -145,7 +145,11 @@ func (o *OwnerImpl) Run(ctx cdcContext.Context) error {
 					continue
 				}
 				nInfo := &model.ChangeFeedInfo{
-					Config: info[0].Config,
+					Config:     info[0].Config,
+					SinkURI:    info[0].SinkURI,
+					Namespace:  info[0].Namespace,
+					ID:         info[0].ID,
+					UpstreamID: info[0].UpstreamID,
 				}
 				//only one capture
 				cp, bt := cf.Tick(ctx,
@@ -154,13 +158,16 @@ func (o *OwnerImpl) Run(ctx cdcContext.Context) error {
 					cf.Status,
 					map[model.CaptureID]*model.CaptureInfo{self.ID: self},
 				)
-				cf.Status = &model.ChangeFeedStatus{
-					CheckpointTs:      cp,
-					MinTableBarrierTs: bt,
-				}
-				progress[cf.uuid] = metadata.ChangefeedProgress{
-					CheckpointTs:      cp,
-					MinTableBarrierTs: bt,
+				// check if the changefeed tick successfully
+				if cp > 0 && bt > 0 {
+					cf.Status = &model.ChangeFeedStatus{
+						CheckpointTs:      cp,
+						MinTableBarrierTs: bt,
+					}
+					progress[cf.uuid] = metadata.ChangefeedProgress{
+						CheckpointTs:      cp,
+						MinTableBarrierTs: bt,
+					}
 				}
 			}
 			if len(progress) > 0 {
