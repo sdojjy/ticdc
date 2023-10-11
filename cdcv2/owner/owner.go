@@ -121,7 +121,7 @@ func NewOwner(
 	}
 }
 
-func (o *OwnerImpl) Run(ctx context.Context) error {
+func (o *OwnerImpl) Run(ctx cdcContext.Context) error {
 	tick := time.NewTicker(time.Millisecond * 100)
 	for {
 		select {
@@ -139,14 +139,16 @@ func (o *OwnerImpl) Run(ctx context.Context) error {
 				// start owner
 				info, err := o.querier.GetChangefeeds(cf.uuid)
 				if err != nil {
-					log.Warn("changefeed not found when handle a job", zap.Any("job", cf))
+					log.Warn("changefeed not found when handle a job",
+						zap.Any("job", cf),
+						zap.Error(err))
 					continue
 				}
 				nInfo := &model.ChangeFeedInfo{
 					Config: info[0].Config,
 				}
 				//only one capture
-				cp, bt := cf.Tick(cdcContext.NewContext(ctx, nil),
+				cp, bt := cf.Tick(ctx,
 					nInfo,
 					//todo: get changefeed status
 					cf.Status,
@@ -173,7 +175,7 @@ func (o *OwnerImpl) Run(ctx context.Context) error {
 					log.Warn("changefeed not found when handle a job", zap.Any("job", cf))
 					continue
 				}
-				changefeed.Close(cdcContext.NewContext(ctx, nil))
+				changefeed.Close(ctx)
 				delete(o.changefeedUUIDMap, cf.ChangefeedUUID)
 				delete(o.changefeeds, changefeed.ID)
 				_ = o.captureObservation.PostOwnerRemoved(cf.ChangefeedUUID, cf.TaskPosition)
@@ -186,7 +188,7 @@ func (o *OwnerImpl) Run(ctx context.Context) error {
 				}
 				cfInfo := info[0]
 				//todo: add upstream
-				up, _ := o.upstreamManager.Get(cfInfo.UpstreamID)
+				up, _ := o.upstreamManager.GetDefaultUpstream()
 				minfo := &model.ChangeFeedInfo{
 					SinkURI:   cfInfo.SinkURI,
 					Config:    cfInfo.Config,
@@ -202,13 +204,17 @@ func (o *OwnerImpl) Run(ctx context.Context) error {
 					Namespace: cfInfo.Namespace,
 					ID:        cfInfo.ID,
 				}
-				p := processor.NewProcessor(minfo, mstatus, nil, cfID, up, o.liveness, 0, o.cfg)
+				self := o.captureObservation.Self()
+				// per changefeed schedule config
+				cfg := *o.cfg
+				cfg.ChangefeedSettings = minfo.Config.Scheduler
+				p := processor.NewProcessor(minfo, mstatus, self, cfID, up, o.liveness, 0, &cfg)
 				o.changefeedUUIDMap[cf.ChangefeedUUID] = newChangefeed(owner.NewChangefeed(
 					cfID,
 					minfo,
 					mstatus, newFeedStateManager(),
-					up, o.cfg,
-				), minfo, mstatus, p)
+					up, &cfg,
+				), cf.ChangefeedUUID, minfo, mstatus, p)
 				o.changefeeds[o.changefeedUUIDMap[cf.ChangefeedUUID].ID] = o.changefeedUUIDMap[cf.ChangefeedUUID]
 			}
 		}

@@ -21,6 +21,7 @@ import (
 	"github.com/pingcap/tiflow/cdc/owner"
 	"github.com/pingcap/tiflow/cdc/processor"
 	"github.com/pingcap/tiflow/cdc/scheduler"
+	"github.com/pingcap/tiflow/cdcv2/metadata"
 	cdcContext "github.com/pingcap/tiflow/pkg/context"
 	"go.uber.org/zap"
 )
@@ -36,10 +37,16 @@ type changefeedImpl struct {
 }
 
 func newChangefeed(changefeed owner.Changefeed,
+	uuid metadata.ChangefeedUUID,
 	info *model.ChangeFeedInfo,
 	status *model.ChangeFeedStatus,
 	processor processor.Processor) *changefeedImpl {
 	return &changefeedImpl{
+		uuid: uuid,
+		ID: model.ChangeFeedID{
+			Namespace: info.Namespace,
+			ID:        info.ID,
+		},
 		changefeed: changefeed,
 		Status:     status,
 		Info:       info,
