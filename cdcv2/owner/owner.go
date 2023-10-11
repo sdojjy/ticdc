@@ -208,7 +208,9 @@ func (o *OwnerImpl) Run(ctx cdcContext.Context) error {
 				// per changefeed schedule config
 				cfg := *o.cfg
 				cfg.ChangefeedSettings = minfo.Config.Scheduler
-				p := processor.NewProcessor(minfo, mstatus, self, cfID, up, o.liveness, 0, &cfg)
+				p := processor.NewProcessor(minfo, mstatus, self, cfID, up,
+					o.liveness,
+					0, &cfg, self, 0)
 				o.changefeedUUIDMap[cf.ChangefeedUUID] = newChangefeed(owner.NewChangefeed(
 					cfID,
 					minfo,

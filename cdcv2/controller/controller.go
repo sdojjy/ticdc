@@ -88,10 +88,11 @@ type controllerImpl struct {
 func (o *controllerImpl) CreateChangefeedInfo(ctx context.Context,
 	upstreamInfo *model.UpstreamInfo, cfInfo *model.ChangeFeedInfo, id model.ChangeFeedID) error {
 	_, err := o.controllerObservation.CreateChangefeed(&metadata.ChangefeedInfo{
-		Config:   cfInfo.Config,
-		TargetTs: cfInfo.TargetTs,
-		SinkURI:  cfInfo.SinkURI,
-		StartTs:  cfInfo.StartTs,
+		Config:     cfInfo.Config,
+		TargetTs:   cfInfo.TargetTs,
+		SinkURI:    cfInfo.SinkURI,
+		StartTs:    cfInfo.StartTs,
+		UpstreamID: upstreamInfo.ID,
 		ChangefeedIdent: metadata.ChangefeedIdent{
 			ID:        id.ID,
 			Namespace: id.Namespace,
@@ -332,16 +333,6 @@ func (o *controllerImpl) AsyncStop() {
 func (o *controllerImpl) GetChangefeedOwnerCaptureInfo(id model.ChangeFeedID) *model.CaptureInfo {
 	// todo: schedule changefeed owner to other capture
 	return o.captureInfo
-}
-
-func (o *controllerImpl) CreateChangefeed(cf *model.ChangeFeedInfo, up *model.UpstreamInfo) error {
-	_, err := o.controllerObservation.CreateChangefeed(&metadata.ChangefeedInfo{
-		StartTs:    cf.StartTs,
-		UpstreamID: cf.UpstreamID,
-		Config:     cf.Config,
-		TargetTs:   cf.TargetTs,
-	}, up)
-	return err
 }
 
 func (o *controllerImpl) RemoveChangefeed(cfID model.ChangeFeedID) error {

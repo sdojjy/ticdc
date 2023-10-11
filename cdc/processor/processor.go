@@ -92,12 +92,17 @@ type processor struct {
 	lazyInit func(ctx cdcContext.Context) error
 	newAgent func(
 		context.Context, *model.Liveness, uint64, *config.SchedulerConfig,
+		*model.CaptureInfo,
+		int64,
 	) (scheduler.Agent, error)
 	cfg *config.SchedulerConfig
 
 	liveness        *model.Liveness
 	agent           scheduler.Agent
 	changefeedEpoch uint64
+
+	ownerCaptureInfo *model.CaptureInfo
+	ownerRevision    int64
 
 	// The latest changefeed info and status from meta storage. they are updated in every Tick.
 	// processor implements TableExecutor interface, so we need to add these two fields here to use them
@@ -414,15 +419,19 @@ func NewProcessor(
 	liveness *model.Liveness,
 	changefeedEpoch uint64,
 	cfg *config.SchedulerConfig,
+	ownerCaptureInfo *model.CaptureInfo,
+	ownerRevision int64,
 ) *processor {
 	p := &processor{
-		upstream:        up,
-		changefeedID:    changefeedID,
-		captureInfo:     captureInfo,
-		liveness:        liveness,
-		changefeedEpoch: changefeedEpoch,
-		latestInfo:      info,
-		latestStatus:    status,
+		upstream:         up,
+		changefeedID:     changefeedID,
+		captureInfo:      captureInfo,
+		liveness:         liveness,
+		changefeedEpoch:  changefeedEpoch,
+		latestInfo:       info,
+		latestStatus:     status,
+		ownerCaptureInfo: ownerCaptureInfo,
+		ownerRevision:    ownerRevision,
 
 		metricSyncTableNumGauge: syncTableNumGauge.
 			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
@@ -632,7 +641,7 @@ func (p *processor) lazyInitImpl(etcdCtx cdcContext.Context) (err error) {
 	// Bind them so that sourceManager can notify sinkManager.r.
 	p.sourceManager.r.OnResolve(p.sinkManager.r.UpdateReceivedSorterResolvedTs)
 
-	p.agent, err = p.newAgent(prcCtx, p.liveness, p.changefeedEpoch, p.cfg)
+	p.agent, err = p.newAgent(prcCtx, p.liveness, p.changefeedEpoch, p.cfg, p.ownerCaptureInfo, p.ownerRevision)
 	if err != nil {
 		return err
 	}
@@ -651,14 +660,15 @@ func (p *processor) newAgentImpl(
 	liveness *model.Liveness,
 	changefeedEpoch uint64,
 	cfg *config.SchedulerConfig,
+	ownerCaptureInfo *model.CaptureInfo,
+	ownerRevision int64,
 ) (ret scheduler.Agent, err error) {
 	messageServer := p.globalVars.MessageServer
 	messageRouter := p.globalVars.MessageRouter
-	etcdClient := p.globalVars.EtcdClient
 	captureID := p.globalVars.CaptureInfo.ID
 	ret, err = scheduler.NewAgent(
 		ctx, captureID, liveness,
-		messageServer, messageRouter, etcdClient, p, p.changefeedID,
+		messageServer, messageRouter, ownerCaptureInfo, ownerRevision, p, p.changefeedID,
 		changefeedEpoch, cfg)
 	return ret, errors.Trace(err)
 }

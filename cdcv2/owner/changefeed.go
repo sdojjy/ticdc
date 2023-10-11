@@ -64,6 +64,9 @@ func (c *changefeedImpl) GetInfoProvider() scheduler.InfoProvider {
 
 func (c *changefeedImpl) Tick(ctx cdcContext.Context, info *model.ChangeFeedInfo,
 	status *model.ChangeFeedStatus, captures map[model.CaptureID]*model.CaptureInfo) (model.Ts, model.Ts) {
+	ctx = cdcContext.WithChangefeedVars(ctx, &cdcContext.ChangefeedVars{
+		ID: c.ID,
+	})
 	err, warning := c.processor.Tick(ctx, info, status)
 	if err != nil {
 

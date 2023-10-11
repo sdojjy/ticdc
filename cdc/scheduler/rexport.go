@@ -22,7 +22,6 @@ import (
 	v3 "github.com/pingcap/tiflow/cdc/scheduler/internal/v3"
 	v3agent "github.com/pingcap/tiflow/cdc/scheduler/internal/v3/agent"
 	"github.com/pingcap/tiflow/pkg/config"
-	"github.com/pingcap/tiflow/pkg/etcd"
 	"github.com/pingcap/tiflow/pkg/p2p"
 	"github.com/pingcap/tiflow/pkg/upstream"
 	"github.com/prometheus/client_golang/prometheus"
@@ -67,7 +66,8 @@ func NewAgent(
 	liveness *model.Liveness,
 	messageServer *p2p.MessageServer,
 	messageRouter p2p.MessageRouter,
-	etcdClient etcd.CDCEtcdClient,
+	ownerCaptureInfo *model.CaptureInfo,
+	ownerRevision int64,
 	executor TableExecutor,
 	changefeedID model.ChangeFeedID,
 	changefeedEpoch uint64,
@@ -75,7 +75,7 @@ func NewAgent(
 ) (Agent, error) {
 	return v3agent.NewAgent(
 		ctx, captureID, liveness, changefeedID,
-		messageServer, messageRouter, etcdClient, executor, changefeedEpoch, cfg)
+		messageServer, messageRouter, ownerCaptureInfo, ownerRevision, executor, changefeedEpoch, cfg)
 }
 
 // NewScheduler returns two-phase scheduler.
