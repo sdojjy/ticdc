@@ -66,36 +66,59 @@ func (o *OwnerImpl) Tick(ctx context.Context,
 
 func (o *OwnerImpl) EnqueueJob(adminJob model.AdminJob,
 	done chan<- error) {
-	panic("implement me")
+	o.pushOwnerJob(&ownerJob{
+		Tp:           ownerJobTypeAdminJob,
+		AdminJob:     &adminJob,
+		ChangefeedID: adminJob.CfID,
+		done:         done,
+	})
 }
 
 func (o *OwnerImpl) RebalanceTables(cfID model.ChangeFeedID,
 	done chan<- error) {
-	panic("implement me")
+	o.pushOwnerJob(&ownerJob{
+		Tp:           ownerJobTypeRebalance,
+		ChangefeedID: cfID,
+		done:         done,
+	})
 }
 
 func (o *OwnerImpl) ScheduleTable(cfID model.ChangeFeedID,
 	toCapture model.CaptureID,
 	tableID model.TableID, done chan<- error) {
-	//TODO implement me
-	panic("implement me")
+	o.pushOwnerJob(&ownerJob{
+		Tp:              ownerJobTypeScheduleTable,
+		ChangefeedID:    cfID,
+		TargetCaptureID: toCapture,
+		TableID:         tableID,
+		done:            done,
+	})
 }
 
 func (o *OwnerImpl) DrainCapture(query *scheduler.Query,
 	done chan<- error) {
-	//TODO implement me
-	panic("implement me")
+	o.pushOwnerJob(&ownerJob{
+		Tp:            ownerJobTypeDrainCapture,
+		scheduleQuery: query,
+		done:          done,
+	})
 }
 
 func (o *OwnerImpl) WriteDebugInfo(w io.Writer,
 	done chan<- error) {
-	//TODO implement me
-	panic("implement me")
+	o.pushOwnerJob(&ownerJob{
+		Tp:              ownerJobTypeDebugInfo,
+		debugInfoWriter: w,
+		done:            done,
+	})
 }
 
 func (o *OwnerImpl) Query(query *owner.Query, done chan<- error) {
-	//TODO implement me
-	panic("implement me")
+	o.pushOwnerJob(&ownerJob{
+		Tp:    ownerJobTypeQuery,
+		query: query,
+		done:  done,
+	})
 }
 
 func (o *OwnerImpl) AsyncStop() {

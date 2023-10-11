@@ -16,6 +16,7 @@ package capture
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"io"
 	"sync"
 
@@ -216,7 +217,7 @@ func (c *captureImpl) run(stdCtx context.Context) error {
 				c.controllerObserver = controllerObserver
 				ctrl := controllerv2.NewController(
 					c.upstreamManager,
-					c.info, controllerObserver)
+					c.info, controllerObserver, c.captureDB)
 				c.controller = ctrl
 				return ctrl.Run(ctx)
 			})
@@ -311,7 +312,6 @@ func (c *captureImpl) Drain() <-chan struct{} {
 }
 
 func (c *captureImpl) Liveness() model.Liveness {
-	//TODO implement me
 	return c.liveness
 }
 
@@ -351,13 +351,49 @@ func (c *captureImpl) Info() (model.CaptureInfo, error) {
 }
 
 func (c *captureImpl) StatusProvider() owner.StatusProvider {
-	//TODO implement me
-	panic("implement me")
+	c.ownerMu.Lock()
+	defer c.ownerMu.Unlock()
+	if c.owner == nil {
+		return nil
+	}
+	return owner.NewStatusProvider(c.owner)
 }
 
 func (c *captureImpl) WriteDebugInfo(ctx context.Context, w io.Writer) {
-	//TODO implement me
-	panic("implement me")
+	wait := func(done <-chan error) {
+		var err error
+		select {
+		case <-ctx.Done():
+			err = ctx.Err()
+		case err = <-done:
+		}
+		if err != nil {
+			log.Warn("write debug info failed", zap.Error(err))
+		}
+	}
+	// Safety: Because we are mainly outputting information about the owner here,
+	// if the owner does not exist or is not set, the information will not be output.
+	o, _ := c.GetOwner()
+	if o != nil {
+		doneOwner := make(chan error, 1)
+		fmt.Fprintf(w, "\n\n*** owner info ***:\n\n")
+		o.WriteDebugInfo(w, doneOwner)
+		// wait the debug info printed
+		wait(doneOwner)
+	}
+
+	doneM := make(chan error, 1)
+	c.captureMu.Lock()
+	//if c.processorManager != nil {
+	//	fmt.Fprintf(w, "\n\n*** processors info ***:\n\n")
+	//	c.processorManager.WriteDebugInfo(ctx, w, doneM)
+	//}
+	// NOTICE: we must release the lock before wait the debug info process down.
+	// Otherwise, the capture initialization and request response will compete
+	// for captureMu resulting in a deadlock.
+	c.captureMu.Unlock()
+	// wait the debug info printed
+	wait(doneM)
 }
 
 func (c *captureImpl) GetUpstreamManager() (*upstream.Manager, error) {

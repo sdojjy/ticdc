@@ -185,17 +185,14 @@ func (o *controllerImpl) handleQueries(query *Query) error {
 		query.Data = ret
 	case QueryAllChangeFeedInfo:
 		ret := map[model.ChangeFeedID]*model.ChangeFeedInfo{}
-		//for cfID, cfReactor := range o.changefeeds {
-		//	if cfReactor.Info == nil {
-		//		ret[cfID] = &model.ChangeFeedInfo{}
-		//		continue
-		//	}
-		//	var err error
-		//	ret[cfID], err = cfReactor.Info.Clone()
-		//	if err != nil {
-		//		return errors.Trace(err)
-		//	}
-		//}
+		for cfID, cf := range o.changefeeds {
+			ret[cfID] = &model.ChangeFeedInfo{
+				SinkURI:   cf.SinkURI,
+				Config:    cf.Config,
+				Namespace: cf.Namespace,
+				ID:        cf.ID,
+			}
+		}
 		query.Data = ret
 	case QueryCaptures:
 		var ret []*model.CaptureInfo

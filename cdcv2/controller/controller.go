@@ -24,12 +24,14 @@ import (
 	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdcv2/metadata"
+	msql "github.com/pingcap/tiflow/cdcv2/metadata/sql"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/orchestrator"
 	"github.com/pingcap/tiflow/pkg/upstream"
 	"github.com/pingcap/tiflow/pkg/version"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
+	"gorm.io/gorm"
 )
 
 type controllerJobType int
@@ -60,7 +62,7 @@ type Controller interface {
 }
 
 type controllerImpl struct {
-	changefeeds     map[model.ChangeFeedID]metadata.ScheduledChangefeed
+	changefeeds     map[model.ChangeFeedID]*metadata.ChangefeedInfo
 	captures        map[model.CaptureID]*model.CaptureInfo
 	upstreamManager *upstream.Manager
 
@@ -83,6 +85,7 @@ type controllerImpl struct {
 	captureInfo *model.CaptureInfo
 
 	controllerObservation metadata.ControllerObservation
+	catptureObezervation  *msql.CaptureOb[*gorm.DB]
 }
 
 func (o *controllerImpl) CreateChangefeedInfo(ctx context.Context,
@@ -106,15 +109,17 @@ func NewController(
 	upstreamManager *upstream.Manager,
 	captureInfo *model.CaptureInfo,
 	controllerObservation metadata.ControllerObservation,
+	captureObservation *msql.CaptureOb[*gorm.DB],
 ) *controllerImpl {
 	return &controllerImpl{
 		upstreamManager:       upstreamManager,
-		changefeeds:           make(map[model.ChangeFeedID]metadata.ScheduledChangefeed),
+		changefeeds:           make(map[model.ChangeFeedID]*metadata.ChangefeedInfo),
 		captures:              map[model.CaptureID]*model.CaptureInfo{},
 		lastTickTime:          time.Now(),
 		logLimiter:            rate.NewLimiter(versionInconsistentLogRate, versionInconsistentLogRate),
 		captureInfo:           captureInfo,
 		controllerObservation: controllerObservation,
+		catptureObezervation:  captureObservation,
 	}
 }
 
@@ -172,15 +177,29 @@ func (o *controllerImpl) Run(stdCtx context.Context) error {
 			// ctx := stdCtx.(cdcContext.Context)
 
 			var unssignedChangefeeds []metadata.ScheduledChangefeed
+			var changefeedUUIDs []metadata.ChangefeedUUID
 			newMap := make(map[model.ChangeFeedID]struct{})
 			for _, changefeed := range changefeeds {
-				o.changefeeds[model.ChangeFeedID{}] = changefeed
-				newMap[model.ChangeFeedID{}] = struct{}{}
+				changefeedUUIDs = append(changefeedUUIDs, changefeed.ChangefeedUUID)
 				if changefeed.Owner == nil || o.captures[*changefeed.Owner] == nil {
 					unssignedChangefeeds = append(unssignedChangefeeds, changefeed)
 					continue
 				}
 				captureChangefeedSize[changefeed.Owner]++
+			}
+			if len(changefeedUUIDs) > 0 {
+				infos, err := o.catptureObezervation.GetChangefeeds(changefeedUUIDs...)
+				if err != nil {
+					continue
+				}
+				for _, info := range infos {
+					cfID := model.ChangeFeedID{
+						ID:        info.ID,
+						Namespace: info.Namespace,
+					}
+					o.changefeeds[cfID] = info
+					newMap[cfID] = struct{}{}
+				}
 			}
 
 			for _, changefeed := range unssignedChangefeeds {
@@ -341,7 +360,7 @@ func (o *controllerImpl) RemoveChangefeed(cfID model.ChangeFeedID) error {
 	if !ok {
 		return nil
 	}
-	return o.controllerObservation.RemoveChangefeed(c.ChangefeedUUID)
+	return o.controllerObservation.RemoveChangefeed(c.UUID)
 }
 
 // Export field names for pretty printing.
