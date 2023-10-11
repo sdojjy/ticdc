@@ -173,6 +173,7 @@ func (c *CaptureOb[T]) handleTaskChanges(ctx context.Context) error {
 	return nil
 }
 
+// Advance updates the progress of the capture.
 func (c *CaptureOb[T]) Advance(cp metadata.CaptureProgress) error {
 	return c.client.Txn(c.egCtx, func(tx T) error {
 		return c.client.updateProgress(tx, &ProgressDO{
@@ -182,10 +183,12 @@ func (c *CaptureOb[T]) Advance(cp metadata.CaptureProgress) error {
 	})
 }
 
+// OwnerChanges returns a channel that receives changefeeds when the owner of the changefeed changes.
 func (c *CaptureOb[T]) OwnerChanges() <-chan metadata.ScheduledChangefeed {
 	return c.ownerChanges.Out()
 }
 
+// PostOwnerRemoved is called when the owner of a changefeed is removed.
 func (c *CaptureOb[T]) PostOwnerRemoved(cf metadata.ChangefeedUUID, taskPosition metadata.ChangefeedProgress) error {
 	sc := c.tasks.get(cf)
 	if sc == nil {
@@ -199,10 +202,12 @@ func (c *CaptureOb[T]) PostOwnerRemoved(cf metadata.ChangefeedUUID, taskPosition
 	})
 }
 
+// ProcessorChanges returns a channel that receives changefeeds when the changefeed changes.
 func (c *CaptureOb[T]) ProcessorChanges() <-chan metadata.ScheduledChangefeed {
 	return c.processorChanges.Out()
 }
 
+// GetChangefeeds returns the changefeeds with the given UUIDs.
 func (c *CaptureOb[T]) GetChangefeeds(cfs ...metadata.ChangefeedUUID) (infos []*metadata.ChangefeedInfo, err error) {
 	var cfDOs []*ChangefeedInfoDO
 	err = c.client.Txn(c.egCtx, func(tx T) error {
@@ -313,7 +318,7 @@ func (c *ControllerOb[T]) init() error {
 	return c.onCaptureOffline(captureOfflined...)
 }
 
-func (c *ControllerOb[T]) handleAliveCaptures(ctx context.Context) error {
+func (c *ControllerOb[T]) handleAliveCaptures(_ context.Context) error {
 	alives := c.getAllCaptures()
 	hash := sortAndHashCaptureList(alives)
 
@@ -345,7 +350,9 @@ func (c *ControllerOb[T]) CreateChangefeed(cf *metadata.ChangefeedInfo, up *mode
 		// Create or update the upstream info.
 		oldUp, err := c.client.queryUpstreamByID(tx, up.ID)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.client.createUpstream(tx, newUp)
+			if err := c.client.createUpstream(tx, newUp); err != nil {
+				return errors.Trace(err)
+			}
 		} else if err != nil {
 			return errors.Trace(err)
 		}
@@ -355,7 +362,9 @@ func (c *ControllerOb[T]) CreateChangefeed(cf *metadata.ChangefeedInfo, up *mode
 		}
 		if !oldUp.equal(newUp) {
 			newUp.Version = oldUp.Version
-			c.client.updateUpstream(tx, newUp)
+			if err := c.client.updateUpstream(tx, newUp); err != nil {
+				return errors.Trace(err)
+			}
 		}
 
 		err = c.client.createChangefeedInfo(tx, &ChangefeedInfoDO{
@@ -396,6 +405,7 @@ func (c *ControllerOb[T]) CreateChangefeed(cf *metadata.ChangefeedInfo, up *mode
 	return cf.ChangefeedIdent, err
 }
 
+// RemoveChangefeed removes the changefeed info
 func (c *ControllerOb[T]) RemoveChangefeed(cf metadata.ChangefeedUUID) error {
 	return c.leaderChecker.TxnWithLeaderLock(c.egCtx, c.selfInfo.ID, func(tx T) error {
 		oldInfo, err := c.client.queryChangefeedInfoByUUID(tx, cf)
@@ -471,6 +481,7 @@ func (c *ControllerOb[T]) CleanupChangefeed(cf metadata.ChangefeedUUID) error {
 	})
 }
 
+// RefreshCaptures Fetch the latest capture list in the TiCDC cluster.
 func (c *ControllerOb[T]) RefreshCaptures() (captures []*model.CaptureInfo, changed bool) {
 	c.aliveCaptures.Lock()
 	defer c.aliveCaptures.Unlock()
@@ -532,7 +543,6 @@ func (c *ControllerOb[T]) onCaptureOffline(ids ...model.CaptureID) error {
 
 			return c.client.deleteProgress(tx, prMap)
 		})
-
 		if err != nil {
 			return errors.Trace(err)
 		}
@@ -540,6 +550,7 @@ func (c *ControllerOb[T]) onCaptureOffline(ids ...model.CaptureID) error {
 	return nil
 }
 
+// SetOwner Schedule a changefeed owner to a given target.
 func (c *ControllerOb[T]) SetOwner(target metadata.ScheduledChangefeed) error {
 	return c.leaderChecker.TxnWithLeaderLock(c.egCtx, c.selfInfo.ID, func(tx T) error {
 		old, err := c.client.queryScheduleByUUID(tx, target.ChangefeedUUID)
@@ -556,6 +567,7 @@ func (c *ControllerOb[T]) SetOwner(target metadata.ScheduledChangefeed) error {
 	})
 }
 
+// GetChangefeedSchedule Get current schedule of the given changefeed.
 func (c *ControllerOb[T]) GetChangefeedSchedule(cf metadata.ChangefeedUUID) (metadata.ScheduledChangefeed, error) {
 	var ret metadata.ScheduledChangefeed
 	err := c.client.Txn(c.egCtx, func(tx T) error {
@@ -569,6 +581,7 @@ func (c *ControllerOb[T]) GetChangefeedSchedule(cf metadata.ChangefeedUUID) (met
 	return ret, err
 }
 
+// ScheduleSnapshot Get a snapshot of all changefeeds current schedule.
 func (c *ControllerOb[T]) ScheduleSnapshot() (ss []metadata.ScheduledChangefeed, cs []*model.CaptureInfo, err error) {
 	err = c.client.Txn(c.egCtx, func(tx T) error {
 		scs, inErr := c.client.querySchedules(tx)
@@ -590,6 +603,7 @@ func (c *ControllerOb[T]) ScheduleSnapshot() (ss []metadata.ScheduledChangefeed,
 	return
 }
 
+// nolint:unused
 type ownerOb[T TxnContext] struct {
 	egCtx    context.Context
 	client   client[T]
@@ -597,10 +611,12 @@ type ownerOb[T TxnContext] struct {
 	cf       *metadata.ChangefeedInfo
 }
 
+// nolint:unused
 func (o *ownerOb[T]) Self() *metadata.ChangefeedInfo {
 	return o.cf
 }
 
+// nolint:unused
 func (o *ownerOb[T]) updateChangefeedState(
 	state model.FeedState,
 	cfErr *model.RunningError,
@@ -632,6 +648,8 @@ func (o *ownerOb[T]) updateChangefeedState(
 	})
 }
 
+// UpdateChangefeed updates changefeed metadata, must be called on a paused one.
+// nolint:unused
 func (o *ownerOb[T]) UpdateChangefeed(info *metadata.ChangefeedInfo) error {
 	return o.client.TxnWithOwnerLock(o.egCtx, o.cf.UUID, func(tx T) error {
 		state, err := o.client.queryChangefeedStateByUUIDWithLock(tx, o.cf.UUID)
@@ -655,30 +673,44 @@ func (o *ownerOb[T]) UpdateChangefeed(info *metadata.ChangefeedInfo) error {
 	})
 }
 
+// ResumeChangefeed resumes a changefeed.
+// nolint:unused
 func (o *ownerOb[T]) ResumeChangefeed() error {
 	return o.updateChangefeedState(model.StateNormal, nil, nil)
 }
 
+// SetChangefeedPending sets the changefeed to state pending.
+// nolint:unused
 func (o *ownerOb[T]) SetChangefeedPending(err *model.RunningError) error {
 	return o.updateChangefeedState(model.StatePending, err, nil)
 }
 
+// SetChangefeedFailed set the changefeed to state failed.
+// nolint:unused
 func (o *ownerOb[T]) SetChangefeedFailed(err *model.RunningError) error {
 	return o.updateChangefeedState(model.StateFailed, err, nil)
 }
 
+// PauseChangefeed pauses a changefeed.
+// nolint:unused
 func (o *ownerOb[T]) PauseChangefeed() error {
 	return o.updateChangefeedState(model.StateStopped, nil, nil)
 }
 
+// SetChangefeedRemoved set the changefeed to state removed.
+// nolint:unused
 func (o *ownerOb[T]) SetChangefeedRemoved() error {
 	return o.updateChangefeedState(model.StateRemoved, nil, nil)
 }
 
+// SetChangefeedFinished set the changefeed to state finished.
+// nolint:unused
 func (o *ownerOb[T]) SetChangefeedFinished() error {
 	return o.updateChangefeedState(model.StateFinished, nil, nil)
 }
 
+// SetChangefeedWarning set the changefeed to state warning.
+// nolint:unused
 func (o *ownerOb[T]) SetChangefeedWarning(warn *model.RunningError) error {
 	return o.updateChangefeedState(model.StateWarning, nil, warn)
 }
