@@ -28,17 +28,19 @@ import (
 	"github.com/pingcap/tiflow/cdc/processor"
 	"github.com/pingcap/tiflow/cdc/scheduler"
 	"github.com/pingcap/tiflow/cdcv2/metadata"
+	msql "github.com/pingcap/tiflow/cdcv2/metadata/sql"
 	"github.com/pingcap/tiflow/pkg/config"
 	cdcContext "github.com/pingcap/tiflow/pkg/context"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/orchestrator"
 	"github.com/pingcap/tiflow/pkg/upstream"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 type OwnerImpl struct {
 	upstreamManager    *upstream.Manager
-	captureObservation metadata.CaptureObservation
+	captureObservation *msql.CaptureOb[*gorm.DB]
 	cfg                *config.SchedulerConfig
 	storage            *sql.DB
 	//todo: make a struct
@@ -129,7 +131,7 @@ func NewOwner(
 	liveness *model.Liveness,
 	upstreamManager *upstream.Manager,
 	cfg *config.SchedulerConfig,
-	captureObservation metadata.CaptureObservation,
+	captureObservation *msql.CaptureOb[*gorm.DB],
 	querier metadata.Querier,
 	storage *sql.DB) *OwnerImpl {
 	return &OwnerImpl{
@@ -241,12 +243,13 @@ func (o *OwnerImpl) Run(ctx cdcContext.Context) error {
 				p := processor.NewProcessor(minfo, mstatus, self, cfID, up,
 					o.liveness,
 					0, &cfg, self, 0)
+				feedstateManager := newFeedStateManager(cfID, up, o.captureObservation.NewOwnerObservation(cfInfo))
 				o.changefeedUUIDMap[cf.ChangefeedUUID] = newChangefeed(owner.NewChangefeed(
 					cfID,
 					minfo,
-					mstatus, newFeedStateManager(cfID, nil),
+					mstatus, feedstateManager,
 					up, &cfg,
-				), cf.ChangefeedUUID, minfo, mstatus, p)
+				), cf.ChangefeedUUID, minfo, mstatus, p, feedstateManager, o.captureObservation)
 				o.changefeeds[o.changefeedUUIDMap[cf.ChangefeedUUID].ID] = o.changefeedUUIDMap[cf.ChangefeedUUID]
 			}
 		}
@@ -266,8 +269,7 @@ func (o *OwnerImpl) handleJobs(ctx context.Context) {
 		}
 		switch job.Tp {
 		case ownerJobTypeAdminJob:
-			//todo: admin job
-			//cfReactor.feedStateManager.PushAdminJob(job.AdminJob)
+			cfReactor.feedstateManager.PushAdminJob(job.AdminJob)
 		case ownerJobTypeScheduleTable:
 			// Scheduler is created lazily, it is nil before initialization.
 			if cfReactor.changefeed.GetScheduler() != nil {
