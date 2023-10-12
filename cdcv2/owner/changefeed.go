@@ -73,7 +73,8 @@ func (c *changefeedImpl) GetInfoProvider() scheduler.InfoProvider {
 	return nil
 }
 
-func (c *changefeedImpl) Tick(ctx cdcContext.Context, info *model.ChangeFeedInfo,
+func (c *changefeedImpl) Tick(ctx cdcContext.Context,
+	info *model.ChangeFeedInfo,
 	status *model.ChangeFeedStatus, captures map[model.CaptureID]*model.CaptureInfo) (model.Ts, model.Ts) {
 	ctx = cdcContext.WithChangefeedVars(ctx, &cdcContext.ChangefeedVars{
 		ID: c.ID,
@@ -94,6 +95,15 @@ func (c *changefeedImpl) Tick(ctx cdcContext.Context, info *model.ChangeFeedInfo
 				zap.Error(err))
 		}
 	}
+	states, err := c.captureOb.GetChangefeedState(c.uuid)
+	if err != nil || len(states) == 0 {
+		log.Warn("failed to get changefeed state",
+			zap.String("namespace", c.ID.Namespace),
+			zap.String("changefeed", c.ID.ID),
+			zap.Error(err))
+	}
+	c.feedstateManager.state = states[0]
+	c.feedstateManager.status = status
 	return c.changefeed.Tick(ctx, info, status, captures)
 }
 

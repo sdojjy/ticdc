@@ -195,7 +195,7 @@ func (o *controllerImpl) Run(stdCtx context.Context) error {
 				captureChangefeedSize[changefeed.Owner]++
 			}
 			if len(changefeedUUIDs) > 0 {
-				infos, err := o.catptureObezervation.GetChangefeeds(changefeedUUIDs...)
+				infos, err := o.catptureObezervation.GetChangefeed(changefeedUUIDs...)
 				if err != nil {
 					continue
 				}

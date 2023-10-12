@@ -162,13 +162,14 @@ func (o *OwnerImpl) Run(ctx cdcContext.Context) error {
 			var progress metadata.CaptureProgress = make(map[metadata.ChangefeedUUID]metadata.ChangefeedProgress)
 			for _, cf := range o.changefeeds {
 				// start owner
-				info, err := o.querier.GetChangefeeds(cf.uuid)
+				info, err := o.querier.GetChangefeed(cf.uuid)
 				if err != nil {
 					log.Warn("changefeed not found when handle a job",
 						zap.Any("job", cf),
 						zap.Error(err))
 					continue
 				}
+				o.querier.GetChangefeedProgress()
 				nInfo := &model.ChangeFeedInfo{
 					Config:     info[0].Config,
 					SinkURI:    info[0].SinkURI,
@@ -213,7 +214,7 @@ func (o *OwnerImpl) Run(ctx cdcContext.Context) error {
 				_ = o.captureObservation.PostOwnerRemoved(cf.ChangefeedUUID, cf.TaskPosition)
 			case metadata.SchedLaunched:
 				// start owner
-				info, err := o.querier.GetChangefeeds(cf.ChangefeedUUID)
+				info, err := o.querier.GetChangefeed(cf.ChangefeedUUID)
 				if err != nil {
 					log.Warn("changefeed not found when handle a job", zap.Any("job", cf))
 					continue
