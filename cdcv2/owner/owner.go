@@ -219,14 +219,25 @@ func (o *OwnerImpl) Run(ctx cdcContext.Context) error {
 					log.Warn("changefeed not found when handle a job", zap.Any("job", cf))
 					continue
 				}
+				state, err := o.querier.GetChangefeedState(cf.ChangefeedUUID)
+				if err != nil {
+					log.Warn("changefeed not found when handle a job", zap.Any("job", cf))
+					continue
+				}
 				cfInfo := info[0]
 				//todo: add upstream
 				up, _ := o.upstreamManager.GetDefaultUpstream()
 				minfo := &model.ChangeFeedInfo{
-					SinkURI:   cfInfo.SinkURI,
-					Config:    cfInfo.Config,
-					Namespace: cfInfo.Namespace,
-					ID:        cfInfo.ID,
+					UpstreamID: cfInfo.UpstreamID,
+					SinkURI:    cfInfo.SinkURI,
+					Config:     cfInfo.Config,
+					Namespace:  cfInfo.Namespace,
+					ID:         cfInfo.ID,
+					State:      state[0].State,
+					Error:      state[0].Error,
+					Warning:    state[0].Warning,
+					StartTs:    cfInfo.StartTs,
+					TargetTs:   cfInfo.TargetTs,
 				}
 				mstatus := &model.ChangeFeedStatus{
 					CheckpointTs:      cf.TaskPosition.CheckpointTs,
@@ -244,7 +255,7 @@ func (o *OwnerImpl) Run(ctx cdcContext.Context) error {
 				p := processor.NewProcessor(minfo, mstatus, self, cfID, up,
 					o.liveness,
 					0, &cfg, self, 0)
-				feedstateManager := newFeedStateManager(cfID, up, msql.NewOwnerObservation(o.captureObservation, cfInfo))
+				feedstateManager := newFeedStateManager(cfID, up, o.captureObservation.OnOwnerLaunched(cfInfo.UUID))
 				o.changefeedUUIDMap[cf.ChangefeedUUID] = newChangefeed(owner.NewChangefeed(
 					cfID,
 					minfo,
@@ -296,30 +307,6 @@ func (o *OwnerImpl) handleJobs(ctx context.Context) {
 
 func (o *OwnerImpl) handleQueries(query *owner.Query) error {
 	switch query.Tp {
-	case owner.QueryAllChangeFeedStatuses:
-		ret := map[model.ChangeFeedID]*model.ChangeFeedStatusForAPI{}
-		for cfID, cfReactor := range o.changefeeds {
-			ret[cfID] = &model.ChangeFeedStatusForAPI{}
-			if cfReactor.Info == nil {
-				continue
-			}
-			ret[cfID].CheckpointTs = cfReactor.Status.CheckpointTs
-		}
-		query.Data = ret
-	case owner.QueryAllChangeFeedInfo:
-		ret := map[model.ChangeFeedID]*model.ChangeFeedInfo{}
-		for cfID, cfReactor := range o.changefeeds {
-			if cfReactor.Info == nil {
-				ret[cfID] = &model.ChangeFeedInfo{}
-				continue
-			}
-			var err error
-			ret[cfID], err = cfReactor.Info.Clone()
-			if err != nil {
-				return errors.Trace(err)
-			}
-		}
-		query.Data = ret
 	case owner.QueryAllTaskStatuses:
 		cfReactor, ok := o.changefeeds[query.ChangeFeedID]
 		if !ok {

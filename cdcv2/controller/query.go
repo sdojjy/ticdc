@@ -20,6 +20,7 @@ import (
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/model"
+	"github.com/pingcap/tiflow/cdcv2/metadata"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -174,21 +175,45 @@ func (o *controllerImpl) handleQueries(query *Query) error {
 	case QueryAllChangeFeedSCheckpointTs:
 		// todo: query realtime checkpoint ts
 		ret := make(map[model.ChangeFeedID]uint64)
-		for cfID, cfReactor := range o.changefeeds {
-			if cfReactor.state == nil {
-				continue
+		var uuids = make([]uint64, 0, len(o.changefeeds))
+		for _, cf := range o.changefeeds {
+			uuids = append(uuids, cf.info.UUID)
+		}
+		progressMap, err := o.catptureObezervation.GetChangefeedProgress(uuids...)
+		if err != nil {
+			return errors.Trace(err)
+		}
+		for id, cf := range o.changefeeds {
+			if v, ok := progressMap[cf.info.UUID]; ok {
+				ret[id] = v.CheckpointTs
 			}
-			ret[cfID] = cfReactor.state.TaskPosition.CheckpointTs
 		}
 		query.Data = ret
 	case QueryAllChangeFeedInfo:
 		ret := map[model.ChangeFeedID]*model.ChangeFeedInfo{}
+		var uuids = make([]uint64, 0, len(o.changefeeds))
 		for cfID, cf := range o.changefeeds {
 			ret[cfID] = &model.ChangeFeedInfo{
 				SinkURI:   cf.info.SinkURI,
 				Config:    cf.info.Config,
 				Namespace: cf.info.Namespace,
 				ID:        cf.info.ID,
+			}
+			uuids = append(uuids, cf.info.UUID)
+		}
+		states, err := o.catptureObezervation.GetChangefeedState(uuids...)
+		if err != nil {
+			return errors.Trace(err)
+		}
+		stateMap := make(map[uint64]*metadata.ChangefeedState, len(states))
+		for _, state := range states {
+			stateMap[state.ChangefeedUUID] = state
+		}
+		for cfID, cf := range o.changefeeds {
+			if state, ok := stateMap[cf.info.UUID]; ok {
+				ret[cfID].State = state.State
+				ret[cfID].Error = state.Error
+				ret[cfID].Warning = state.Warning
 			}
 		}
 		query.Data = ret

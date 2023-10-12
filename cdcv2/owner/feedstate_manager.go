@@ -21,12 +21,10 @@ import (
 	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdcv2/metadata"
-	"github.com/pingcap/tiflow/cdcv2/metadata/sql"
 	cerrors "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/upstream"
 	"github.com/tikv/client-go/v2/oracle"
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
 const (
@@ -46,7 +44,7 @@ type feedStateManagerImpl struct {
 	shouldBeRemoved bool
 	adminJobQueue   []*model.AdminJob
 	id              model.ChangeFeedID
-	ownerdb         *sql.OwnerOb[*gorm.DB]
+	ownerdb         metadata.OwnerObservation
 	upstream        *upstream.Upstream
 
 	// resolvedTs and initCheckpointTs is for checking whether resolved timestamp
@@ -69,7 +67,7 @@ type feedStateManagerImpl struct {
 }
 
 func newFeedStateManager(id model.ChangeFeedID, upstream *upstream.Upstream,
-	ownerdb *sql.OwnerOb[*gorm.DB]) *feedStateManagerImpl {
+	ownerdb metadata.OwnerObservation) *feedStateManagerImpl {
 	f := &feedStateManagerImpl{
 		adminJobQueue: make([]*model.AdminJob, 0),
 		id:            id,
