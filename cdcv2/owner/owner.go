@@ -244,7 +244,7 @@ func (o *OwnerImpl) Run(ctx cdcContext.Context) error {
 				p := processor.NewProcessor(minfo, mstatus, self, cfID, up,
 					o.liveness,
 					0, &cfg, self, 0)
-				feedstateManager := newFeedStateManager(cfID, up, o.captureObservation.NewOwnerObservation(cfInfo))
+				feedstateManager := newFeedStateManager(cfID, up, msql.NewOwnerObservation(o.captureObservation, cfInfo))
 				o.changefeedUUIDMap[cf.ChangefeedUUID] = newChangefeed(owner.NewChangefeed(
 					cfID,
 					minfo,
