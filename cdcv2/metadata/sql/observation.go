@@ -636,6 +636,14 @@ type OwnerOb[T TxnContext] struct {
 	cf     *metadata.ChangefeedInfo
 }
 
+func (c *CaptureOb[T]) NewOwnerObservation(cf *metadata.ChangefeedInfo) *OwnerOb[T] {
+	return &OwnerOb[T]{
+		egCtx:  c.egCtx,
+		client: c.client,
+		cf:     cf,
+	}
+}
+
 // Self returns the changefeed info of the owner.
 // nolint:unused
 func (o *OwnerOb[T]) Self() *metadata.ChangefeedInfo {
