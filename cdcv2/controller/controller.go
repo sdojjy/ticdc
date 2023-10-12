@@ -29,6 +29,7 @@ import (
 	"github.com/pingcap/tiflow/pkg/orchestrator"
 	"github.com/pingcap/tiflow/pkg/upstream"
 	"github.com/pingcap/tiflow/pkg/version"
+	"github.com/tikv/client-go/v2/oracle"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	"gorm.io/gorm"
@@ -174,7 +175,7 @@ func (o *controllerImpl) Run(stdCtx context.Context) error {
 			// initializing.
 			//
 			// See more gc doc.
-			if err = o.updateGCSafepoint(stdCtx); err != nil {
+			if err = o.updateGCSafepoint(stdCtx, changefeeds); err != nil {
 				return errors.Trace(err)
 			}
 
@@ -277,8 +278,9 @@ func (o *controllerImpl) clusterVersionConsistent(captures map[model.CaptureID]*
 	return true
 }
 
-func (o *controllerImpl) updateGCSafepoint(ctx context.Context) error {
-	minChekpoinTsMap, forceUpdateMap := o.calculateGCSafepoint()
+func (o *controllerImpl) updateGCSafepoint(ctx context.Context,
+	changefeeds []metadata.ScheduledChangefeed) error {
+	minChekpoinTsMap, forceUpdateMap := o.calculateGCSafepoint(changefeeds)
 
 	for upstreamID, minCheckpointTs := range minChekpoinTsMap {
 		up, _ := o.upstreamManager.Get(upstreamID)
@@ -307,24 +309,79 @@ func (o *controllerImpl) updateGCSafepoint(ctx context.Context) error {
 	return nil
 }
 
+type changefeedWithStatus struct {
+	info   *model.ChangeFeedInfo
+	status *model.ChangeFeedStatus
+}
+
 // calculateGCSafepoint calculates GCSafepoint for different upstream.
 // Note: we need to maintain a TiCDC service GC safepoint for each upstream TiDB cluster
 // to prevent upstream TiDB GC from removing data that is still needed by TiCDC.
 // GcSafepoint is the minimum checkpointTs of all changefeeds that replicating a same upstream TiDB cluster.
-func (o *controllerImpl) calculateGCSafepoint() (
+func (o *controllerImpl) calculateGCSafepoint(changefeeds []metadata.ScheduledChangefeed) (
 	map[uint64]uint64, map[uint64]interface{},
 ) {
 	minCheckpointTsMap := make(map[uint64]uint64)
 	forceUpdateMap := make(map[uint64]interface{})
 
-	/*todo: calculateGCSafepoint
-	for changefeedID, changefeedState := range o.changefeeds {
-		if changefeedState.Info == nil || !changefeedState.Info.NeedBlockGC() {
+	uuids := make([]uint64, 0, len(changefeeds))
+	for _, changefeed := range changefeeds {
+		uuids = append(uuids, changefeed.ChangefeedUUID)
+	}
+	states, _ := o.catptureObezervation.GetChangefeedState(uuids...)
+	progressMap, _ := o.catptureObezervation.GetChangefeedProgress(uuids...)
+	infos, _ := o.catptureObezervation.GetChangefeed(uuids...)
+
+	stateMap := make(map[uint64]*metadata.ChangefeedState, len(states))
+	for _, state := range states {
+		stateMap[state.ChangefeedUUID] = state
+	}
+	infoMap := make(map[model.ChangeFeedID]*changefeedWithStatus, len(infos))
+	for _, info := range infos {
+		state := stateMap[info.ChangefeedIdent.UUID]
+		if state == nil {
+			continue
+		}
+		progress, ok := progressMap[info.ChangefeedIdent.UUID]
+		if !ok {
+			continue
+		}
+		infoMap[model.ChangeFeedID{
+			Namespace: info.Namespace,
+			ID:        info.ID,
+		}] = &changefeedWithStatus{
+			info: &model.ChangeFeedInfo{
+				UpstreamID:     info.UpstreamID,
+				Namespace:      info.Namespace,
+				ID:             info.ID,
+				SinkURI:        info.SinkURI,
+				StartTs:        info.StartTs,
+				TargetTs:       info.TargetTs,
+				AdminJobType:   progress.AdminJobType,
+				Engine:         "",
+				SortDir:        "",
+				Config:         info.Config,
+				State:          state.State,
+				Error:          state.Error,
+				Warning:        state.Warning,
+				CreatorVersion: "",
+				Epoch:          0,
+			},
+			status: &model.ChangeFeedStatus{
+				CheckpointTs:      progress.CheckpointTs,
+				MinTableBarrierTs: progress.MinTableBarrierTs,
+				AdminJobType:      progress.AdminJobType,
+			},
+		}
+	}
+
+	for changefeedID, changefeedState := range infoMap {
+		if changefeedState.status == nil || !changefeedState.info.NeedBlockGC() {
 			continue
 		}
 
-		checkpointTs := changefeedState.Info.GetCheckpointTs(changefeedState.Status)
-		upstreamID := changefeedState.Info.UpstreamID
+		checkpointTs := changefeedState.info.GetCheckpointTs(changefeedState.status)
+		upstreamID := changefeedState.info.UpstreamID
 
 		if _, exist := minCheckpointTsMap[upstreamID]; !exist {
 			minCheckpointTsMap[upstreamID] = checkpointTs
@@ -350,7 +407,7 @@ func (o *controllerImpl) calculateGCSafepoint() (
 			minCheckpointTsMap[up.ID] = oracle.GoTimeToTS(ts)
 		}
 		return nil
-	})*/
+	})
 	return minCheckpointTsMap, forceUpdateMap
 }
 

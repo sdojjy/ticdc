@@ -27,6 +27,7 @@ import (
 	msql "github.com/pingcap/tiflow/cdcv2/metadata/sql"
 	cdcContext "github.com/pingcap/tiflow/pkg/context"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
+	"go.uber.org/atomic"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -41,6 +42,7 @@ type changefeedImpl struct {
 	changefeed       owner.Changefeed
 	feedstateManager *feedStateManagerImpl
 	captureOb        *msql.CaptureOb[*gorm.DB]
+	processorClosed  atomic.Bool
 }
 
 func newChangefeed(changefeed owner.Changefeed,
@@ -79,32 +81,43 @@ func (c *changefeedImpl) Tick(ctx cdcContext.Context,
 	ctx = cdcContext.WithChangefeedVars(ctx, &cdcContext.ChangefeedVars{
 		ID: c.ID,
 	})
-	err, warning := c.processor.Tick(ctx, info, status)
-	if warning != nil {
-		c.patchProcessorWarning(c.captureOb.Self(), warning)
-	}
-	if err != nil {
-		c.patchProcessorErr(c.captureOb.Self(), err)
-		// patchProcessorErr have already patched its error to tell the owner
-		// manager can just close the processor and continue to tick other processors
-		err = c.processor.Close()
-		if err != nil {
-			log.Warn("failed to close processor",
-				zap.String("namespace", c.ID.Namespace),
-				zap.String("changefeed", c.ID.ID),
-				zap.Error(err))
-		}
-	}
 	states, err := c.captureOb.GetChangefeedState(c.uuid)
 	if err != nil || len(states) == 0 {
 		log.Warn("failed to get changefeed state",
 			zap.String("namespace", c.ID.Namespace),
 			zap.String("changefeed", c.ID.ID),
 			zap.Error(err))
+		return 0, 0
 	}
 	c.feedstateManager.state = states[0]
 	c.feedstateManager.status = status
-	return c.changefeed.Tick(ctx, info, status, captures)
+	ts, ts2 := c.changefeed.Tick(ctx, info, status, captures)
+	if c.feedstateManager.ShouldRunning() {
+		err, warning := c.processor.Tick(ctx, info, status)
+		c.processorClosed.Store(false)
+		if warning != nil {
+			c.patchProcessorWarning(c.captureOb.Self(), warning)
+		}
+		if err != nil {
+			c.patchProcessorErr(c.captureOb.Self(), err)
+			// patchProcessorErr have already patched its error to tell the owner
+			// manager can just close the processor and continue to tick other processors
+			err = c.processor.Close()
+			c.processorClosed.Store(true)
+			if err != nil {
+				log.Warn("failed to close processor",
+					zap.String("namespace", c.ID.Namespace),
+					zap.String("changefeed", c.ID.ID),
+					zap.Error(err))
+			}
+		}
+	} else {
+		if !c.processorClosed.Load() {
+			c.processor.Close()
+			c.processorClosed.Store(true)
+		}
+	}
+	return ts, ts2
 }
 
 var processorIgnorableError = []*errors.Error{
