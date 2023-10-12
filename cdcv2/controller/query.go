@@ -172,25 +172,23 @@ func (o *controllerImpl) handleJobs(_ context.Context) {
 func (o *controllerImpl) handleQueries(query *Query) error {
 	switch query.Tp {
 	case QueryAllChangeFeedSCheckpointTs:
+		// todo: query realtime checkpoint ts
 		ret := make(map[model.ChangeFeedID]uint64)
-		//for cfID, cfReactor := range o.changefeeds {
-		//	if cfReactor == nil {
-		//		continue
-		//	}
-		//	if cfReactor.Status == nil {
-		//		continue
-		//	}
-		//	ret[cfID] = cfReactor.Owner.CheckpointTs
-		//}
+		for cfID, cfReactor := range o.changefeeds {
+			if cfReactor.state == nil {
+				continue
+			}
+			ret[cfID] = cfReactor.state.TaskPosition.CheckpointTs
+		}
 		query.Data = ret
 	case QueryAllChangeFeedInfo:
 		ret := map[model.ChangeFeedID]*model.ChangeFeedInfo{}
 		for cfID, cf := range o.changefeeds {
 			ret[cfID] = &model.ChangeFeedInfo{
-				SinkURI:   cf.SinkURI,
-				Config:    cf.Config,
-				Namespace: cf.Namespace,
-				ID:        cf.ID,
+				SinkURI:   cf.info.SinkURI,
+				Config:    cf.info.Config,
+				Namespace: cf.info.Namespace,
+				ID:        cf.info.ID,
 			}
 		}
 		query.Data = ret

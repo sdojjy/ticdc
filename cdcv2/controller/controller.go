@@ -61,8 +61,13 @@ type Controller interface {
 	IsChangefeedExists(ctx context.Context, id model.ChangeFeedID) (bool, error)
 }
 
+type changefeedFullInfo struct {
+	info  *metadata.ChangefeedInfo
+	state *metadata.ScheduledChangefeed
+}
+
 type controllerImpl struct {
-	changefeeds     map[model.ChangeFeedID]*metadata.ChangefeedInfo
+	changefeeds     map[model.ChangeFeedID]changefeedFullInfo
 	captures        map[model.CaptureID]*model.CaptureInfo
 	upstreamManager *upstream.Manager
 
@@ -113,7 +118,7 @@ func NewController(
 ) *controllerImpl {
 	return &controllerImpl{
 		upstreamManager:       upstreamManager,
-		changefeeds:           make(map[model.ChangeFeedID]*metadata.ChangefeedInfo),
+		changefeeds:           make(map[model.ChangeFeedID]changefeedFullInfo),
 		captures:              map[model.CaptureID]*model.CaptureInfo{},
 		lastTickTime:          time.Now(),
 		logLimiter:            rate.NewLimiter(versionInconsistentLogRate, versionInconsistentLogRate),
@@ -179,8 +184,10 @@ func (o *controllerImpl) Run(stdCtx context.Context) error {
 			var unssignedChangefeeds []metadata.ScheduledChangefeed
 			var changefeedUUIDs []metadata.ChangefeedUUID
 			newMap := make(map[model.ChangeFeedID]struct{})
+			uuidMap := make(map[metadata.ChangefeedUUID]*metadata.ScheduledChangefeed)
 			for _, changefeed := range changefeeds {
 				changefeedUUIDs = append(changefeedUUIDs, changefeed.ChangefeedUUID)
+				uuidMap[changefeed.ChangefeedUUID] = &changefeed
 				if changefeed.Owner == nil || o.captures[*changefeed.Owner] == nil {
 					unssignedChangefeeds = append(unssignedChangefeeds, changefeed)
 					continue
@@ -197,7 +204,10 @@ func (o *controllerImpl) Run(stdCtx context.Context) error {
 						ID:        info.ID,
 						Namespace: info.Namespace,
 					}
-					o.changefeeds[cfID] = info
+					o.changefeeds[cfID] = changefeedFullInfo{
+						info:  info,
+						state: uuidMap[info.UUID],
+					}
 					newMap[cfID] = struct{}{}
 				}
 			}
@@ -360,7 +370,7 @@ func (o *controllerImpl) RemoveChangefeed(cfID model.ChangeFeedID) error {
 	if !ok {
 		return nil
 	}
-	return o.controllerObservation.RemoveChangefeed(c.UUID)
+	return o.controllerObservation.RemoveChangefeed(c.info.UUID)
 }
 
 // Export field names for pretty printing.

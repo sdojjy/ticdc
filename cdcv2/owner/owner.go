@@ -244,7 +244,7 @@ func (o *OwnerImpl) Run(ctx cdcContext.Context) error {
 				o.changefeedUUIDMap[cf.ChangefeedUUID] = newChangefeed(owner.NewChangefeed(
 					cfID,
 					minfo,
-					mstatus, newFeedStateManager(),
+					mstatus, newFeedStateManager(cfID, nil),
 					up, &cfg,
 				), cf.ChangefeedUUID, minfo, mstatus, p)
 				o.changefeeds[o.changefeedUUIDMap[cf.ChangefeedUUID].ID] = o.changefeedUUIDMap[cf.ChangefeedUUID]
