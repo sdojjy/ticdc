@@ -169,7 +169,6 @@ func (o *OwnerImpl) Run(ctx cdcContext.Context) error {
 						zap.Error(err))
 					continue
 				}
-				o.querier.GetChangefeedProgress()
 				nInfo := &model.ChangeFeedInfo{
 					Config:     info[0].Config,
 					SinkURI:    info[0].SinkURI,
@@ -307,27 +306,16 @@ func (o *OwnerImpl) handleJobs(ctx context.Context) {
 
 func (o *OwnerImpl) handleQueries(query *owner.Query) error {
 	switch query.Tp {
-	case owner.QueryAllTaskStatuses:
+	case owner.QueryChangeFeedStatuses:
 		cfReactor, ok := o.changefeeds[query.ChangeFeedID]
 		if !ok {
-			return cerror.ErrChangeFeedNotExists.GenWithStackByArgs(query.ChangeFeedID)
+			query.Data = nil
+			return nil
 		}
-		if cfReactor.Info == nil {
-			return cerror.ErrChangeFeedNotExists.GenWithStackByArgs(query.ChangeFeedID)
-		}
-
-		var ret map[model.CaptureID]*model.TaskStatus
-		provider := cfReactor.GetInfoProvider()
-		if provider == nil {
-			// The scheduler has not been initialized yet.
-			return cerror.ErrChangeFeedNotExists.GenWithStackByArgs(query.ChangeFeedID)
-		}
-
-		var err error
-		ret, err = provider.GetTaskStatuses()
-		if err != nil {
-			return errors.Trace(err)
-		}
+		pmap, _ := o.querier.GetChangefeedProgress(cfReactor.uuid)
+		ret := &model.ChangeFeedStatusForAPI{}
+		ret.ResolvedTs = pmap[cfReactor.uuid].CheckpointTs
+		ret.CheckpointTs = pmap[cfReactor.uuid].CheckpointTs
 		query.Data = ret
 	case owner.QueryProcessors:
 		var ret []*model.ProcInfoSnap
@@ -365,6 +353,32 @@ func (o *OwnerImpl) handleQueries(query *owner.Query) error {
 	case owner.QueryOwner:
 		_, exist := o.changefeeds[query.ChangeFeedID]
 		query.Data = exist
+	case owner.QueryChangefeedInfo:
+		cf, ok := o.changefeeds[query.ChangeFeedID]
+		if !ok {
+			query.Data = nil
+			return nil
+		}
+		cfs, _ := o.captureObservation.GetChangefeed(cf.uuid)
+		state, _ := o.captureObservation.GetChangefeedState(cf.uuid)
+		query.Data = &model.ChangeFeedInfo{
+			UpstreamID:     cfs[0].UpstreamID,
+			Namespace:      cfs[0].Namespace,
+			ID:             cfs[0].ID,
+			SinkURI:        cfs[0].SinkURI,
+			CreateTime:     time.Time{},
+			StartTs:        cfs[0].StartTs,
+			TargetTs:       cfs[0].TargetTs,
+			AdminJobType:   0,
+			Engine:         "",
+			SortDir:        "",
+			Config:         cfs[0].Config,
+			State:          state[0].State,
+			Error:          state[0].Error,
+			Warning:        state[0].Warning,
+			CreatorVersion: "",
+			Epoch:          0,
+		}
 	}
 	return nil
 }

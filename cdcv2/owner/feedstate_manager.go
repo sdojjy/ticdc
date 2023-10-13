@@ -406,7 +406,7 @@ func (f *feedStateManagerImpl) handleAdminJob() (jobsPending bool) {
 		//}
 		f.shouldBeRunning = false
 		jobsPending = true
-		f.ownerdb.ResumeChangefeed()
+		f.ownerdb.PauseChangefeed()
 	case model.AdminRemove:
 		f.shouldBeRunning = false
 		f.shouldBeRemoved = true

@@ -356,7 +356,7 @@ func (c *captureImpl) StatusProvider() owner.StatusProvider {
 	if c.owner == nil {
 		return nil
 	}
-	return owner.NewStatusProvider(c.owner)
+	return ownerv2.NewStatusProvider(c.owner)
 }
 
 func (c *captureImpl) WriteDebugInfo(ctx context.Context, w io.Writer) {

@@ -553,6 +553,9 @@ func (p *processor) tick(ctx cdcContext.Context) error {
 		return errors.Trace(err)
 	}
 
+	if p == nil || p.agent == nil {
+		return nil
+	}
 	barrier, err := p.agent.Tick(ctx)
 	if err != nil {
 		return errors.Trace(err)
