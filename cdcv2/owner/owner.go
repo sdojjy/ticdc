@@ -60,6 +60,19 @@ type OwnerImpl struct {
 	querier metadata.Querier
 }
 
+func (o *OwnerImpl) UpdateChangefeedAndUpstream(ctx context.Context,
+	upstreamInfo *model.UpstreamInfo,
+	changeFeedInfo *model.ChangeFeedInfo,
+	changeFeedID model.ChangeFeedID) error {
+	panic("implement me")
+}
+
+func (o *OwnerImpl) UpdateChangefeed(ctx context.Context,
+	changeFeedInfo *model.ChangeFeedInfo) error {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (o *OwnerImpl) Tick(ctx context.Context,
 	state orchestrator.ReactorState) (nextState orchestrator.ReactorState, err error) {
 	//TODO implement me
@@ -252,8 +265,10 @@ func (o *OwnerImpl) Run(ctx cdcContext.Context) error {
 				cfg := *o.cfg
 				cfg.ChangefeedSettings = minfo.Config.Scheduler
 				p := processor.NewProcessor(minfo, mstatus, self, cfID, up,
-					o.liveness,
-					0, &cfg, self, 0)
+					o.liveness, 0, &cfg, &ownerInfoClient{
+						ownerID:  self.ID,
+						captures: []*model.CaptureInfo{self},
+					})
 				feedstateManager := newFeedStateManager(cfID, up, o.captureObservation.OnOwnerLaunched(cfInfo.UUID))
 				o.changefeedUUIDMap[cf.ChangefeedUUID] = newChangefeed(owner.NewChangefeed(
 					cfID,
@@ -265,6 +280,23 @@ func (o *OwnerImpl) Run(ctx cdcContext.Context) error {
 			}
 		}
 	}
+}
+
+type ownerInfoClient struct {
+	ownerID  model.CaptureID
+	captures []*model.CaptureInfo
+}
+
+func (o *ownerInfoClient) GetOwnerID(context.Context) (model.CaptureID, error) {
+	return o.ownerID, nil
+}
+
+func (o *ownerInfoClient) GetOwnerRevision(context.Context, model.CaptureID) (int64, error) {
+	return 0, nil
+}
+
+func (o *ownerInfoClient) GetCaptures(context.Context) (int64, []*model.CaptureInfo, error) {
+	return 0, o.captures, nil
 }
 
 func (o *OwnerImpl) handleJobs(ctx context.Context) {

@@ -94,8 +94,8 @@ type controllerImpl struct {
 	catptureObezervation  *msql.CaptureOb[*gorm.DB]
 }
 
-func (o *controllerImpl) CreateChangefeedInfo(ctx context.Context,
-	upstreamInfo *model.UpstreamInfo, cfInfo *model.ChangeFeedInfo, id model.ChangeFeedID) error {
+func (o *controllerImpl) CreateChangefeed(ctx context.Context,
+	upstreamInfo *model.UpstreamInfo, cfInfo *model.ChangeFeedInfo) error {
 	_, err := o.controllerObservation.CreateChangefeed(&metadata.ChangefeedInfo{
 		Config:     cfInfo.Config,
 		TargetTs:   cfInfo.TargetTs,
@@ -103,8 +103,8 @@ func (o *controllerImpl) CreateChangefeedInfo(ctx context.Context,
 		StartTs:    cfInfo.StartTs,
 		UpstreamID: upstreamInfo.ID,
 		ChangefeedIdent: metadata.ChangefeedIdent{
-			ID:        id.ID,
-			Namespace: id.Namespace,
+			ID:        cfInfo.ID,
+			Namespace: cfInfo.Namespace,
 		},
 	}, upstreamInfo)
 	return err

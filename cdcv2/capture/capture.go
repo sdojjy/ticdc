@@ -105,6 +105,12 @@ type captureImpl struct {
 	controllerObserver metadata.ControllerObservation
 }
 
+func (c *captureImpl) GetUpstreamInfo(ctx context.Context,
+	id model.UpstreamID,
+	s string) (*model.UpstreamInfo, error) {
+	panic("implement me")
+}
+
 func (c *captureImpl) Run(ctx context.Context) error {
 	defer log.Info("the capture routine has exited")
 	// Limit the frequency of reset capture to avoid frequent recreating of resources
