@@ -37,6 +37,7 @@ import (
 	"github.com/pingcap/tiflow/pkg/config"
 	cdcContext "github.com/pingcap/tiflow/pkg/context"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
+	"github.com/pingcap/tiflow/pkg/etcd"
 	"github.com/pingcap/tiflow/pkg/filter"
 	"github.com/pingcap/tiflow/pkg/pdutil"
 	"github.com/pingcap/tiflow/pkg/retry"
@@ -62,8 +63,6 @@ type Processor interface {
 	// It can be called in etcd ticks, so it should never be blocked.
 	// Tick Returns: error and warnings. error will be propagated to the owner, and warnings will be record.
 	Tick(cdcContext.Context, *model.ChangeFeedInfo, *model.ChangeFeedStatus) (error, error)
-
-	Close() error
 }
 
 var _ Processor = (*processor)(nil)
@@ -94,8 +93,7 @@ type processor struct {
 	lazyInit func(ctx cdcContext.Context) error
 	newAgent func(
 		context.Context, *model.Liveness, uint64, *config.SchedulerConfig,
-		*model.CaptureInfo,
-		int64,
+		etcd.OwnerCaptureInfoClient,
 	) (scheduler.Agent, error)
 	cfg *config.SchedulerConfig
 
@@ -103,15 +101,14 @@ type processor struct {
 	agent           scheduler.Agent
 	changefeedEpoch uint64
 
-	ownerCaptureInfo *model.CaptureInfo
-	ownerRevision    int64
-
 	// The latest changefeed info and status from meta storage. they are updated in every Tick.
 	// processor implements TableExecutor interface, so we need to add these two fields here to use them
 	// in `AddTableSpan` and `RemoveTableSpan`, otherwise we need to adjust the interface.
 	// we can refactor this step by step.
 	latestInfo   *model.ChangeFeedInfo
 	latestStatus *model.ChangeFeedStatus
+
+	ownerCaptureInfoClient etcd.OwnerCaptureInfoClient
 
 	metricSyncTableNumGauge      prometheus.Gauge
 	metricSchemaStorageGcTsGauge prometheus.Gauge
@@ -421,19 +418,18 @@ func NewProcessor(
 	liveness *model.Liveness,
 	changefeedEpoch uint64,
 	cfg *config.SchedulerConfig,
-	ownerCaptureInfo *model.CaptureInfo,
-	ownerRevision int64,
+	ownerCaptureInfoClient etcd.OwnerCaptureInfoClient,
 ) *processor {
 	p := &processor{
-		upstream:         up,
-		changefeedID:     changefeedID,
-		captureInfo:      captureInfo,
-		liveness:         liveness,
-		changefeedEpoch:  changefeedEpoch,
-		latestInfo:       info,
-		latestStatus:     status,
-		ownerCaptureInfo: ownerCaptureInfo,
-		ownerRevision:    ownerRevision,
+		upstream:        up,
+		changefeedID:    changefeedID,
+		captureInfo:     captureInfo,
+		liveness:        liveness,
+		changefeedEpoch: changefeedEpoch,
+		latestInfo:      info,
+		latestStatus:    status,
+
+		ownerCaptureInfoClient: ownerCaptureInfoClient,
 
 		metricSyncTableNumGauge: syncTableNumGauge.
 			WithLabelValues(changefeedID.Namespace, changefeedID.ID),
@@ -553,9 +549,6 @@ func (p *processor) tick(ctx cdcContext.Context) error {
 		return errors.Trace(err)
 	}
 
-	if p == nil || p.agent == nil {
-		return nil
-	}
 	barrier, err := p.agent.Tick(ctx)
 	if err != nil {
 		return errors.Trace(err)
@@ -645,8 +638,7 @@ func (p *processor) lazyInitImpl(etcdCtx cdcContext.Context) (err error) {
 
 	// Bind them so that sourceManager can notify sinkManager.r.
 	p.sourceManager.r.OnResolve(p.sinkManager.r.UpdateReceivedSorterResolvedTs)
-
-	p.agent, err = p.newAgent(prcCtx, p.liveness, p.changefeedEpoch, p.cfg, p.ownerCaptureInfo, p.ownerRevision)
+	p.agent, err = p.newAgent(prcCtx, p.liveness, p.changefeedEpoch, p.cfg, p.ownerCaptureInfoClient)
 	if err != nil {
 		return err
 	}
@@ -665,15 +657,14 @@ func (p *processor) newAgentImpl(
 	liveness *model.Liveness,
 	changefeedEpoch uint64,
 	cfg *config.SchedulerConfig,
-	ownerCaptureInfo *model.CaptureInfo,
-	ownerRevision int64,
+	client etcd.OwnerCaptureInfoClient,
 ) (ret scheduler.Agent, err error) {
 	messageServer := p.globalVars.MessageServer
 	messageRouter := p.globalVars.MessageRouter
 	captureID := p.globalVars.CaptureInfo.ID
 	ret, err = scheduler.NewAgent(
 		ctx, captureID, liveness,
-		messageServer, messageRouter, ownerCaptureInfo, ownerRevision, p, p.changefeedID,
+		messageServer, messageRouter, client, p, p.changefeedID,
 		changefeedEpoch, cfg)
 	return ret, errors.Trace(err)
 }

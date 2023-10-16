@@ -26,10 +26,10 @@ import (
 	"github.com/pingcap/tiflow/pkg/config"
 	cdcContext "github.com/pingcap/tiflow/pkg/context"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
+	"github.com/pingcap/tiflow/pkg/etcd"
 	"github.com/pingcap/tiflow/pkg/orchestrator"
 	"github.com/pingcap/tiflow/pkg/upstream"
 	"github.com/prometheus/client_golang/prometheus"
-	"go.etcd.io/etcd/client/v3/concurrency"
 	"go.uber.org/zap"
 )
 
@@ -75,8 +75,7 @@ type managerImpl struct {
 		*model.Liveness,
 		uint64,
 		*config.SchedulerConfig,
-		*model.CaptureInfo,
-		int64,
+		etcd.OwnerCaptureInfoClient,
 	) *processor
 	cfg *config.SchedulerConfig
 
@@ -129,63 +128,10 @@ func (m *managerImpl) Tick(stdCtx context.Context, state orchestrator.ReactorSta
 
 			cfg := *m.cfg
 			cfg.ChangefeedSettings = changefeedState.Info.Config.Scheduler
-
-			etcdClient := ctx.GlobalVars().EtcdClient
-			etcdCliCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			defer cancel()
-
-			ownerCaptureID, err := etcdClient.GetOwnerID(etcdCliCtx)
-			if err != nil {
-				if err != concurrency.ErrElectionNoLeader {
-					continue
-				}
-				// We tolerate the situation where there is no owner.
-				// If we are registered in Etcd, an elected Owner will have to
-				// contact us before it can schedule any table.
-				log.Info("schedulerv3: no owner found. We will wait for an owner to contact us.",
-					zap.String("ownerCaptureID", ownerCaptureID),
-					zap.String("namespace", changefeedID.Namespace),
-					zap.String("changefeed", changefeedID.ID),
-					zap.Error(err))
-				continue
-			}
-			var ownerCaptureInfo *model.CaptureInfo
-			_, captures, err := etcdClient.GetCaptures(ctx)
-			for _, captureInfo := range captures {
-				if captureInfo.ID == ownerCaptureID {
-					ownerCaptureInfo = captureInfo
-					break
-				}
-			}
-			if ownerCaptureInfo == nil {
-				log.Info("schedulerv3: no owner found. We will wait for an owner to contact us.",
-					zap.String("ownerCaptureID", ownerCaptureID),
-					zap.String("namespace", changefeedID.Namespace),
-					zap.String("changefeed", changefeedID.ID),
-					zap.Error(err))
-				continue
-			}
-
-			revision, err := etcdClient.GetOwnerRevision(etcdCliCtx, ownerCaptureID)
-			if err != nil {
-				if cerror.ErrOwnerNotFound.Equal(err) || cerror.ErrNotOwner.Equal(err) {
-					// These are expected errors when no owner has been elected
-					log.Info("schedulerv3: no owner found when querying for the owner revision",
-						zap.String("ownerCaptureID", ownerCaptureID),
-						zap.String("captureID", ownerCaptureID),
-						zap.String("namespace", changefeedID.Namespace),
-						zap.String("changefeed", changefeedID.ID),
-						zap.Error(err))
-					continue
-				}
-				log.Error("schedulerv3: error when querying for the owner revision", zap.Error(err))
-				continue
-			}
-
 			p = m.newProcessor(
 				changefeedState.Info, changefeedState.Status,
 				m.captureInfo, changefeedID, up, m.liveness,
-				currentChangefeedEpoch, &cfg, ownerCaptureInfo, revision)
+				currentChangefeedEpoch, &cfg, ctx.GlobalVars().EtcdClient)
 			m.processors[changefeedID] = p
 		}
 		ctx := cdcContext.WithChangefeedVars(ctx, &cdcContext.ChangefeedVars{

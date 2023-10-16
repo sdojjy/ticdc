@@ -57,12 +57,13 @@ type Controller interface {
 	GetCaptures(ctx context.Context) ([]*model.CaptureInfo, error)
 	GetProcessors(ctx context.Context) ([]*model.ProcInfoSnap, error)
 	IsChangefeedExists(ctx context.Context, id model.ChangeFeedID) (bool, error)
-	CreateChangefeedInfo(context.Context,
+	CreateChangefeed(context.Context,
 		*model.UpstreamInfo,
 		*model.ChangeFeedInfo,
-		model.ChangeFeedID,
 	) error
 }
+
+var _ Controller = &controllerImpl{}
 
 type controllerImpl struct {
 	changefeeds     map[model.ChangeFeedID]*orchestrator.ChangefeedReactorState
@@ -84,9 +85,9 @@ type controllerImpl struct {
 		sync.Mutex
 		queue []*controllerJob
 	}
+	etcdClient etcd.CDCEtcdClient
 
 	captureInfo *model.CaptureInfo
-	etcdClient  etcd.CDCEtcdClient
 }
 
 // NewController creates a new Controller
@@ -290,12 +291,11 @@ func (o *controllerImpl) GetChangefeedOwnerCaptureInfo(id model.ChangeFeedID) *m
 	return o.captureInfo
 }
 
-func (o *controllerImpl) CreateChangefeedInfo(ctx context.Context,
-	upstream *model.UpstreamInfo,
-	cf *model.ChangeFeedInfo,
-	id model.ChangeFeedID,
+func (o *controllerImpl) CreateChangefeed(ctx context.Context,
+	upstreamInfo *model.UpstreamInfo,
+	cfInfo *model.ChangeFeedInfo,
 ) error {
-	return o.etcdClient.CreateChangefeedInfo(ctx, upstream, cf, id)
+	return o.etcdClient.CreateChangefeedInfo(ctx, upstreamInfo, cfInfo)
 }
 
 // Export field names for pretty printing.

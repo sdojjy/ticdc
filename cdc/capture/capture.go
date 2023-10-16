@@ -122,7 +122,7 @@ type captureImpl struct {
 		cfg *config.SchedulerConfig,
 	) processor.Manager
 	newOwner      func(upstreamManager *upstream.Manager, cfg *config.SchedulerConfig) owner.Owner
-	newController func(upstreamManager *upstream.Manager, captureInfo *model.CaptureInfo, etcdClient etcd.CDCEtcdClient) controller.Controller
+	newController func(upstreamManager *upstream.Manager, captureInfo *model.CaptureInfo, client etcd.CDCEtcdClient) controller.Controller
 }
 
 // NewCapture returns a new Capture instance

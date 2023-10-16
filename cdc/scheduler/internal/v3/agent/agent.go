@@ -15,6 +15,7 @@ package agent
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pingcap/log"
@@ -26,8 +27,10 @@ import (
 	"github.com/pingcap/tiflow/cdc/scheduler/schedulepb"
 	"github.com/pingcap/tiflow/pkg/config"
 	"github.com/pingcap/tiflow/pkg/errors"
+	"github.com/pingcap/tiflow/pkg/etcd"
 	"github.com/pingcap/tiflow/pkg/p2p"
 	"github.com/pingcap/tiflow/pkg/version"
+	"go.etcd.io/etcd/client/v3/concurrency"
 	"go.uber.org/zap"
 )
 
@@ -86,8 +89,7 @@ func newAgent(
 	captureID model.CaptureID,
 	liveness *model.Liveness,
 	changeFeedID model.ChangeFeedID,
-	ownerCaptureInfo *model.CaptureInfo,
-	ownerRevision int64,
+	client etcd.OwnerCaptureInfoClient,
 	tableExecutor internal.TableExecutor,
 	changefeedEpoch uint64,
 	cfg *config.SchedulerConfig,
@@ -99,70 +101,69 @@ func newAgent(
 		compat:    compat.New(cfg, map[model.CaptureID]*model.CaptureInfo{}),
 	}
 
-	//etcdCliCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	//defer cancel()
+	etcdCliCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
-	//ownerCaptureID, err := etcdClient.GetOwnerID(etcdCliCtx)
-	//if err != nil {
-	//	if err != concurrency.ErrElectionNoLeader {
-	//		return nil, errors.Trace(err)
-	//	}
-	//	// We tolerate the situation where there is no owner.
-	//	// If we are registered in Etcd, an elected Owner will have to
-	//	// contact us before it can schedule any table.
-	//	log.Info("schedulerv3: no owner found. We will wait for an owner to contact us.",
-	//		zap.String("ownerCaptureID", ownerCaptureID),
-	//		zap.String("namespace", changeFeedID.Namespace),
-	//		zap.String("changefeed", changeFeedID.ID),
-	//		zap.Error(err))
-	//	return result, nil
-	//}
-	//var ownerCaptureInfo *model.CaptureInfo
-	//_, captures, err := etcdClient.GetCaptures(ctx)
-	//for _, captureInfo := range captures {
-	//	if captureInfo.ID == ownerCaptureID {
-	//		ownerCaptureInfo = captureInfo
-	//		break
-	//	}
-	//}
-	//if ownerCaptureInfo == nil {
-	//	log.Info("schedulerv3: no owner found. We will wait for an owner to contact us.",
-	//		zap.String("ownerCaptureID", ownerCaptureID),
-	//		zap.String("namespace", changeFeedID.Namespace),
-	//		zap.String("changefeed", changeFeedID.ID),
-	//		zap.Error(err))
-	//	return result, nil
-	//}
+	ownerCaptureID, err := client.GetOwnerID(etcdCliCtx)
+	if err != nil {
+		if err != concurrency.ErrElectionNoLeader {
+			return nil, errors.Trace(err)
+		}
+		// We tolerate the situation where there is no owner.
+		// If we are registered in Etcd, an elected Owner will have to
+		// contact us before it can schedule any table.
+		log.Info("schedulerv3: no owner found. We will wait for an owner to contact us.",
+			zap.String("ownerCaptureID", ownerCaptureID),
+			zap.String("namespace", changeFeedID.Namespace),
+			zap.String("changefeed", changeFeedID.ID),
+			zap.Error(err))
+		return result, nil
+	}
+	var ownerCaptureInfo *model.CaptureInfo
+	_, captures, err := client.GetCaptures(ctx)
+	for _, captureInfo := range captures {
+		if captureInfo.ID == ownerCaptureID {
+			ownerCaptureInfo = captureInfo
+			break
+		}
+	}
+	if ownerCaptureInfo == nil {
+		log.Info("schedulerv3: no owner found. We will wait for an owner to contact us.",
+			zap.String("namespace", changeFeedID.Namespace),
+			zap.String("changefeed", changeFeedID.ID),
+			zap.Error(err))
+		return result, nil
+	}
 	result.compat.UpdateCaptureInfo(map[model.CaptureID]*model.CaptureInfo{
-		ownerCaptureInfo.ID: ownerCaptureInfo,
+		ownerCaptureID: ownerCaptureInfo,
 	})
 
 	log.Info("schedulerv3: agent owner found",
-		zap.String("ownerCaptureID", ownerCaptureInfo.ID),
+		zap.String("ownerCaptureID", ownerCaptureID),
 		zap.String("captureID", captureID),
 		zap.String("namespace", changeFeedID.Namespace),
 		zap.String("changefeed", changeFeedID.ID))
 
-	//revision, err := etcdClient.GetOwnerRevision(etcdCliCtx, ownerCaptureID)
-	//if err != nil {
-	//	if errors.ErrOwnerNotFound.Equal(err) || errors.ErrNotOwner.Equal(err) {
-	//		// These are expected errors when no owner has been elected
-	//		log.Info("schedulerv3: no owner found when querying for the owner revision",
-	//			zap.String("ownerCaptureID", ownerCaptureID),
-	//			zap.String("captureID", captureID),
-	//			zap.String("namespace", changeFeedID.Namespace),
-	//			zap.String("changefeed", changeFeedID.ID),
-	//			zap.Error(err))
-	//		return result, nil
-	//	}
-	//	return nil, err
-	//}
+	revision, err := client.GetOwnerRevision(etcdCliCtx, ownerCaptureID)
+	if err != nil {
+		if errors.ErrOwnerNotFound.Equal(err) || errors.ErrNotOwner.Equal(err) {
+			// These are expected errors when no owner has been elected
+			log.Info("schedulerv3: no owner found when querying for the owner revision",
+				zap.String("ownerCaptureID", ownerCaptureID),
+				zap.String("captureID", captureID),
+				zap.String("namespace", changeFeedID.Namespace),
+				zap.String("changefeed", changeFeedID.ID),
+				zap.Error(err))
+			return result, nil
+		}
+		return nil, err
+	}
 
 	// We don't need address, and owner info will be updated when there is a
 	// new owner elected. To avoid confusion, just leave it empty.
 	ownerCaptureInfo.AdvertiseAddr = ""
 	result.ownerInfo = ownerInfo{
-		Revision:    schedulepb.OwnerRevision{Revision: ownerRevision},
+		Revision:    schedulepb.OwnerRevision{Revision: revision},
 		CaptureInfo: *ownerCaptureInfo,
 	}
 	return result, nil
@@ -175,14 +176,13 @@ func NewAgent(ctx context.Context,
 	changeFeedID model.ChangeFeedID,
 	messageServer *p2p.MessageServer,
 	messageRouter p2p.MessageRouter,
-	ownerCaptureInfo *model.CaptureInfo,
-	ownerRevision int64,
+	ownerInfoClient etcd.OwnerCaptureInfoClient,
 	tableExecutor internal.TableExecutor,
 	changefeedEpoch uint64,
 	cfg *config.SchedulerConfig,
 ) (internal.Agent, error) {
 	result, err := newAgent(
-		ctx, captureID, liveness, changeFeedID, ownerCaptureInfo, ownerRevision, tableExecutor,
+		ctx, captureID, liveness, changeFeedID, ownerInfoClient, tableExecutor,
 		changefeedEpoch, cfg)
 	if err != nil {
 		return nil, errors.Trace(err)
