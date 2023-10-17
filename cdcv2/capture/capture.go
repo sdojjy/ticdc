@@ -337,7 +337,7 @@ func (c *captureImpl) GetController() (controller.Controller, error) {
 }
 
 func (c *captureImpl) GetControllerCaptureInfo(ctx context.Context) (*model.CaptureInfo, error) {
-	return c.captureDB.Self(), nil
+	return c.captureDB.GetController()
 }
 
 func (c *captureImpl) IsController() bool {
