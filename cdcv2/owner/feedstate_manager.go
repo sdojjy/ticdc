@@ -49,8 +49,8 @@ type feedStateManagerImpl struct {
 
 	// resolvedTs and initCheckpointTs is for checking whether resolved timestamp
 	// has been advanced or not.
-	resolvedTs       model.Ts
-	initCheckpointTs model.Ts
+	resolvedTs   model.Ts
+	checkpointTs model.Ts
 
 	checkpointTsAdvanced time.Time
 	lastCheckpointTs     model.Ts
@@ -64,6 +64,8 @@ type feedStateManagerImpl struct {
 
 	state  *metadata.ChangefeedState
 	status *model.ChangeFeedStatus
+
+	changefeedErrorStuckDuration time.Duration
 }
 
 func newFeedStateManager(id model.ChangeFeedID, upstream *upstream.Upstream,
@@ -81,7 +83,7 @@ func newFeedStateManager(id model.ChangeFeedID, upstream *upstream.Upstream,
 	f.errBackoff.RandomizationFactor = defaultBackoffRandomizationFactor
 	// backoff will stop once the defaultBackoffMaxElapsedTime has elapsed.
 	f.errBackoff.MaxElapsedTime = defaultBackoffMaxElapsedTime
-
+	f.changefeedErrorStuckDuration = time.Minute * 15
 	f.resetErrRetry()
 	return f
 }
@@ -97,19 +99,23 @@ func (f *feedStateManagerImpl) PushAdminJob(job *model.AdminJob) {
 	f.pushAdminJob(job)
 }
 
-func (f *feedStateManagerImpl) Tick(resolvedTs model.Ts) (adminJobPending bool) {
-	if f.status != nil {
-		if f.lastCheckpointTs < f.status.CheckpointTs {
-			f.lastCheckpointTs = f.status.CheckpointTs
+func (f *feedStateManagerImpl) Tick(resolvedTs model.Ts,
+	status *model.ChangeFeedStatus,
+	info *model.ChangeFeedInfo) (adminJobPending bool) {
+	f.checkAndInitLastRetryCheckpointTs(status)
+
+	if status != nil {
+		if f.checkpointTs < status.CheckpointTs {
+			f.checkpointTs = status.CheckpointTs
 			f.checkpointTsAdvanced = time.Now()
 		}
-		if f.initCheckpointTs == 0 {
-			// It's the first time `m.state.Status` gets filled.
-			f.initCheckpointTs = f.status.CheckpointTs
+		if f.resolvedTs < resolvedTs {
+			f.resolvedTs = resolvedTs
+		}
+		if f.checkpointTs >= f.resolvedTs {
+			f.checkpointTsAdvanced = time.Now()
 		}
 	}
-
-	f.checkAndInitLastRetryCheckpointTs(f.status)
 
 	f.resolvedTs = resolvedTs
 	f.shouldBeRunning = true
@@ -347,9 +353,8 @@ func (f *feedStateManagerImpl) HandleWarning(warnings ...*model.RunningError) {
 		// 1. checkpoint lag is large enough;
 		// 2. checkpoint hasn't been advanced for a long while;
 		// 3. the changefeed has been initialized.
-		if currTime.Sub(ckptTime) > defaultBackoffMaxElapsedTime &&
-			time.Since(f.checkpointTsAdvanced) > defaultBackoffMaxElapsedTime &&
-			f.resolvedTs > f.initCheckpointTs {
+		checkpointTsStuck := time.Since(f.checkpointTsAdvanced) > f.changefeedErrorStuckDuration
+		if checkpointTsStuck {
 			log.Info("changefeed retry on warning for a very long time and does not resume, "+
 				"it will be failed", zap.String("changefeed", f.id.String()),
 				zap.Uint64("checkpointTs", f.status.CheckpointTs),

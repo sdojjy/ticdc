@@ -349,7 +349,7 @@ func (c *changefeed) checkStaleCheckpointTs(ctx cdcContext.Context,
 func (c *changefeed) tick(ctx cdcContext.Context,
 	captures map[model.CaptureID]*model.CaptureInfo,
 ) (model.Ts, model.Ts, error) {
-	adminJobPending := c.feedStateManager.Tick(c.resolvedTs)
+	adminJobPending := c.feedStateManager.Tick(c.resolvedTs, c.latestStatus, c.latestInfo)
 	preCheckpointTs := c.latestInfo.GetCheckpointTs(c.latestStatus)
 	// checkStaleCheckpointTs must be called before `feedStateManager.ShouldRunning()`
 	// to ensure all changefeeds, no matter whether they are running or not, will be checked.
@@ -489,10 +489,7 @@ LOOP2:
 	}
 
 	checkpointTs := c.latestStatus.CheckpointTs
-	if c.resolvedTs == 0 {
-		c.resolvedTs = checkpointTs
-	}
-
+	c.resolvedTs = checkpointTs
 	minTableBarrierTs := c.latestStatus.MinTableBarrierTs
 
 	failpoint.Inject("NewChangefeedNoRetryError", func() {
@@ -641,6 +638,7 @@ LOOP2:
 		return err
 	}
 	if c.redoMetaMgr.Enabled() {
+		c.resolvedTs = c.redoMetaMgr.GetFlushedMeta().ResolvedTs
 		c.wg.Add(1)
 		go func() {
 			defer c.wg.Done()
@@ -758,6 +756,7 @@ func (c *changefeed) releaseResources(ctx cdcContext.Context) {
 	c.barriers = nil
 	c.initialized = false
 	c.isReleased = true
+	c.resolvedTs = 0
 
 	log.Info("changefeed closed",
 		zap.String("namespace", c.id.Namespace),

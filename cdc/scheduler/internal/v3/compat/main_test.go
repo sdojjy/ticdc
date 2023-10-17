@@ -11,24 +11,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package master
+package compat
 
-import "github.com/spf13/cobra"
+import (
+	"testing"
 
-func NewValidationCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "validation",
-		Short: "operate or query validation task",
-	}
-	cmd.AddCommand(
-		NewStartValidationCmd(),
-		NewStopValidationCmd(),
-		NewUpdateValidationCmd(),
-		NewQueryValidationErrorCmd(),
-		NewQueryValidationStatusCmd(),
-		NewIgnoreValidationErrorCmd(),
-		NewResolveValidationErrorCmd(),
-		NewClearValidationErrorCmd(),
-	)
-	return cmd
+	"github.com/pingcap/tiflow/pkg/leakutil"
+)
+
+func TestMain(m *testing.M) {
+	leakutil.SetUpLeakTest(m)
 }
