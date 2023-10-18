@@ -198,7 +198,7 @@ func (s *server) prepare(ctx context.Context) error {
 	s.createSortEngineFactory()
 	s.setMemoryLimit()
 
-	if conf.Debug.EnableCaptureV2 {
+	if conf.Debug.CDCV2.Enable {
 		s.capture = capturev2.NewCapture(s.pdEndpoints, cdcEtcdClient,
 			s.grpcService, s.sortEngineFactory, s.pdClient)
 	} else {

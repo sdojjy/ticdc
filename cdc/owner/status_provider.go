@@ -50,7 +50,7 @@ type QueryType int32
 
 const (
 	// QueryAllTaskStatuses is the type of query all task statuses.
-	QueryAllTaskStatuses = iota
+	QueryAllTaskStatuses QueryType = iota
 	// QueryProcessors is the type of query processors.
 	QueryProcessors
 	// QueryCaptures is the type of query captures info.
