@@ -21,9 +21,6 @@ import (
 type DebugConfig struct {
 	DB *DBConfig `toml:"db" json:"db"`
 
-	EnableCaptureV2 bool             `toml:"enable-capture-v2" json:"enable-capture-v2"`
-	MetaStoreConfig *MetaStoreConfig `toml:"meta-store" json:"meta-store"`
-
 	Messages *MessagesConfig `toml:"messages" json:"messages"`
 
 	// Scheduler is the configuration of the two-phase scheduler.
@@ -34,11 +31,6 @@ type DebugConfig struct {
 
 	// CDCV2 enables ticdc version 2 implementation with new metastore
 	CDCV2 *CDCV2 `toml:"cdc-v2" json:"cdc-v2"`
-}
-
-type MetaStoreConfig struct {
-	// The address of the meta store.
-	DSN string `toml:"dsn" json:"dsn"`
 }
 
 // ValidateAndAdjust validates and adjusts the debug configuration
