@@ -18,8 +18,12 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"net"
+	"net/url"
+	"strings"
 	"sync"
 
+	dmysql "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
@@ -274,7 +278,11 @@ func (c *captureImpl) reset(ctx context.Context) error {
 
 	c.MessageRouter = p2p.NewMessageRouterWithLocalClient(c.info.ID, c.config.Security, messageClientConfig)
 
-	c.storage, err = sql.Open("mysql", c.config.Debug.CDCV2.MetaStoreConfig.URI)
+	dsnConfig, err := genBasicDSN(c.config.Debug.CDCV2.MetaStoreConfig.URI)
+	if err != nil {
+		return errors.Trace(err)
+	}
+	c.storage, err = sql.Open("mysql", dsnConfig.FormatDSN())
 	if err != nil {
 		return errors.Trace(err)
 	}
@@ -287,6 +295,85 @@ func (c *captureImpl) reset(ctx context.Context) error {
 
 	log.Info("capture initialized", zap.Any("capture", c.info))
 	return nil
+}
+
+// genBasicDSN generates a basic DSN from the given config.
+func genBasicDSN(str string) (*dmysql.Config, error) {
+	endpoint, err := url.Parse(str)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	// dsn format of the driver:
+	// [username[:password]@][protocol[(address)]]/dbname[?param1=value1&...&paramN=valueN]
+	username := endpoint.User.Username()
+	if username == "" {
+		username = "root"
+	}
+	password, _ := endpoint.User.Password()
+
+	hostName := endpoint.Hostname()
+	port := endpoint.Port()
+	if port == "" {
+		port = "3306"
+	}
+
+	// This will handle the IPv6 address format.
+	var dsn *dmysql.Config
+	host := net.JoinHostPort(hostName, port)
+	//todo: support tls
+	dsnStr := fmt.Sprintf("%s:%s@tcp(%s)/%s", username, password, host, "")
+	if dsn, err = dmysql.ParseDSN(dsnStr); err != nil {
+		return nil, errors.Trace(err)
+	}
+
+	dsn.DBName = strings.TrimLeft(endpoint.Path, "/")
+	// create test db used for parameter detection
+	// Refer https://github.com/go-sql-driver/mysql#parameters
+	if dsn.Params == nil {
+		dsn.Params = make(map[string]string, 1)
+	}
+	dsn.Params["parseTime"] = "true"
+	for key, pa := range endpoint.Query() {
+		dsn.Params[key] = pa[0]
+	}
+	//dsn.Params["writeTimeout"] = cfg.WriteTimeout
+	//dsn.Params["timeout"] = cfg.DialTimeout
+	return dsn, nil
+}
+
+func getSSLCA() string {
+	return ""
+	//if values.SSLCa == nil || len(*values.SSLCa) == 0 {
+	//	return nil
+	//}
+	//
+	//var (
+	//	sslCert string
+	//	sslKey  string
+	//)
+	//if values.SSLCert != nil {
+	//	sslCert = *values.SSLCert
+	//}
+	//if values.SSLKey != nil {
+	//	sslKey = *values.SSLKey
+	//}
+	//credential := security.Credential{
+	//	CAPath:   *values.SSLCa,
+	//	CertPath: sslCert,
+	//	KeyPath:  sslKey,
+	//}
+	//tlsCfg, err := credential.ToTLSConfig()
+	//if err != nil {
+	//	return errors.Trace(err)
+	//}
+	//
+	//name := "cdc_mysql_tls" + changefeedID.Namespace + "_" + changefeedID.ID
+	//err = dmysql.RegisterTLSConfig(name, tlsCfg)
+	//if err != nil {
+	//	return cerror.ErrMySQLConnectionError.Wrap(err).GenWithStack("fail to open MySQL connection")
+	//}
+	//*tls = "?tls=" + name
+	//return nil
 }
 
 func (c captureImpl) Close() {
