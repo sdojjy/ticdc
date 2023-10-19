@@ -32,6 +32,10 @@ type MetaStoreConfiguration struct {
 	// URI is the address of the meta store.
 	// for example:  "mysql://127.0.0.1:3306/test"
 	URI string `toml:"uri" json:"uri"`
+	// SSLCA is the path of the CA certificate file.
+	SSLCa   string `toml:"ssl-ca" json:"ssl-ca"`
+	SSLCert string `toml:"ssl-cert" json:"ssl-cert"`
+	SSLKey  string `toml:"ssl-key" json:"ssl-key"`
 }
 
 // ValidateAndAdjust validates the meta store configurations
