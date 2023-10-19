@@ -363,7 +363,7 @@ func getSSLParam(storeConfig config.MetaStoreConfiguration) (string, error) {
 	return "?tls=" + name, nil
 }
 
-func (c captureImpl) Close() {
+func (c *captureImpl) Close() {
 	defer c.cancel()
 	// Safety: Here we mainly want to stop the owner
 	// and ignore it if the owner does not exist or is not set.

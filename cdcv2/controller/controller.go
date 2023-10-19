@@ -46,22 +46,6 @@ const (
 // captures with versions different from that of the controller
 const versionInconsistentLogRate = 1
 
-// Controller is a manager to schedule changefeeds
-type Controller interface {
-	orchestrator.Reactor
-	AsyncStop()
-	GetChangefeedOwnerCaptureInfo(id model.ChangeFeedID) *model.CaptureInfo
-	GetAllChangeFeedInfo(ctx context.Context) (
-		map[model.ChangeFeedID]*model.ChangeFeedInfo, error,
-	)
-	GetAllChangeFeedCheckpointTs(ctx context.Context) (
-		map[model.ChangeFeedID]uint64, error,
-	)
-	GetCaptures(ctx context.Context) ([]*model.CaptureInfo, error)
-	GetProcessors(ctx context.Context) ([]*model.ProcInfoSnap, error)
-	IsChangefeedExists(ctx context.Context, id model.ChangeFeedID) (bool, error)
-}
-
 type changefeedFullInfo struct {
 	info  *metadata.ChangefeedInfo
 	state *metadata.ScheduledChangefeed
