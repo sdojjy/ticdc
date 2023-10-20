@@ -18,13 +18,11 @@ import (
 	"encoding/json"
 
 	"github.com/pingcap/errors"
-	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/pkg/config"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/sink/codec"
 	"github.com/pingcap/tiflow/pkg/sink/codec/common"
-	"go.uber.org/zap"
 )
 
 // NewDebeziumRowEventEncoderBuilder creates a debezium encoderBuilder.
@@ -59,12 +57,6 @@ func (d *debeziumRowEventEncoder) EncodeDDLEvent(e *model.DDLEvent) (*common.Mes
 	if err != nil {
 		return nil, cerror.WrapError(cerror.ErrCanalEncodeFailed, err)
 	}
-	value, err = common.Compress(
-		d.config.ChangefeedID, d.config.LargeMessageHandle.LargeMessageHandleCompression, value,
-	)
-	if err != nil {
-		return nil, errors.Trace(err)
-	}
 	return common.NewDDLMsg(config.ProtocolDebezium, nil, value, e), nil
 }
 
@@ -89,15 +81,6 @@ func (d *debeziumRowEventEncoder) AppendRowChangedEvent(ctx context.Context,
 		Callback: callback,
 	}
 	m.IncRowsCount()
-
-	originLength := m.Length()
-	if m.Length() > d.config.MaxMessageBytes {
-		log.Error("Single Message is too large for debezium",
-			zap.Int("maxMessageBytes", d.config.MaxMessageBytes),
-			zap.Int("length", originLength))
-		return cerror.ErrMessageTooLarge.GenWithStackByArgs()
-	}
-
 	d.messages = append(d.messages, m)
 	return nil
 }

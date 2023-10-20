@@ -121,5 +121,5 @@ func getOp(e *model.RowChangedEvent) string {
 }
 
 func (d *DMLPayloadBuilder) Build() *DMLPayload {
-	return &DMLPayload{}
+	return d.msg
 }
