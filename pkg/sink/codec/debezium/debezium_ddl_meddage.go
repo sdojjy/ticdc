@@ -78,41 +78,43 @@ func (d *DDLPayloadBuilder) Build(e *model.DDLEvent) *DDLPayload {
 	}
 	d.msg.Source = &ddlSource{}
 	d.msg.Position = &binlogPosition{}
-	change := tableChange{}
-	d.msg.TableChanges = []tableChange{change}
-	switch e.Type {
-	case parsermodel.ActionCreateTable:
-		change.Type = "CREATE"
-	case parsermodel.ActionDropTable:
-		change.Type = "DROP"
-	default:
-		change.Type = "ALTER"
-	}
-	primaryKeys := make([]string, 0)
-	for _, col := range e.TableInfo.GetPrimaryKey().Columns {
-		primaryKeys = append(primaryKeys, col.Name.O)
-	}
-	cols := make([]column, 0, len(e.TableInfo.Columns))
-	for _, col := range e.TableInfo.Columns {
-		cols = append(cols, column{
-			Name:            col.Name.O,
-			JdbcType:        int(col.GetType()),
-			TypeName:        col.GetTypeDesc(),
-			TypeExpression:  col.GeneratedExprString,
-			CharsetName:     col.GetCharset(),
-			Position:        col.Offset,
-			Optional:        false,
-			AutoIncremented: mysql.HasAutoIncrementFlag(col.GetFlag()),
-			Generated:       col.IsGenerated(),
-			Comment:         col.Comment,
-			HasDefaultValue: col.DefaultValue != nil,
-			EnumValues:      col.GetElems(),
-		})
-	}
-	change.Table = table{
-		DefaultCharsetName:    e.Charset,
-		PrimaryKeyColumnNames: primaryKeys,
-		Columns:               cols,
+	if e.TableInfo != nil {
+		change := tableChange{}
+		d.msg.TableChanges = []tableChange{change}
+		switch e.Type {
+		case parsermodel.ActionCreateTable:
+			change.Type = "CREATE"
+		case parsermodel.ActionDropTable:
+			change.Type = "DROP"
+		default:
+			change.Type = "ALTER"
+		}
+		primaryKeys := make([]string, 0)
+		cols := make([]column, 0, len(e.TableInfo.Columns))
+		for _, col := range e.TableInfo.Columns {
+			cols = append(cols, column{
+				Name:            col.Name.O,
+				JdbcType:        int(col.GetType()),
+				TypeName:        col.GetTypeDesc(),
+				TypeExpression:  col.GeneratedExprString,
+				CharsetName:     col.GetCharset(),
+				Position:        col.Offset,
+				Optional:        false,
+				AutoIncremented: mysql.HasAutoIncrementFlag(col.GetFlag()),
+				Generated:       col.IsGenerated(),
+				Comment:         col.Comment,
+				HasDefaultValue: col.DefaultValue != nil,
+				EnumValues:      col.GetElems(),
+			})
+			if mysql.HasPriKeyFlag(col.GetFlag()) {
+				primaryKeys = append(primaryKeys, col.Name.O)
+			}
+		}
+		change.Table = table{
+			DefaultCharsetName:    e.Charset,
+			PrimaryKeyColumnNames: primaryKeys,
+			Columns:               cols,
+		}
 	}
 	return d.msg
 }
