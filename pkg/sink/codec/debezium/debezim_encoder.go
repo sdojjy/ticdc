@@ -116,6 +116,6 @@ func (d *debeziumRowEventEncoder) newJSONMessageForDDL(e *model.DDLEvent) *ddlPa
 	return &ddlPayload{}
 }
 
-func (d *debeziumRowEventEncoder) newJSONMessageForDML(e *model.RowChangedEvent) *DMLPayloadBuilder {
-	return &DMLPayloadBuilder{}
+func (d *debeziumRowEventEncoder) newJSONMessageForDML(e *model.RowChangedEvent) *DMLPayload {
+	return NewDMLPayloadBuilder().WithRowChangedEvent(e).Build()
 }

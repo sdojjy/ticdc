@@ -13,7 +13,12 @@
 
 package debezium
 
-import "github.com/pingcap/tiflow/cdc/model"
+import (
+	"encoding/base64"
+
+	"github.com/pingcap/tidb/parser/mysql"
+	"github.com/pingcap/tiflow/cdc/model"
+)
 
 type DMLPayload struct {
 	Before      map[string]interface{} `json:"before,omitempty"`
@@ -57,8 +62,62 @@ func NewDMLPayloadBuilder() *DMLPayloadBuilder {
 }
 
 func (d *DMLPayloadBuilder) WithRowChangedEvent(e *model.RowChangedEvent) *DMLPayloadBuilder {
-	d.msg = &DMLPayload{}
+	d.msg = &DMLPayload{
+		Op:          getOp(e),
+		TsMs:        int64(e.CommitTs),
+		Transaction: nil,
+		Source:      nil,
+	}
+	if e.IsDelete() {
+		d.msg.Before = make(map[string]interface{})
+		for _, col := range e.PreColumns {
+			d.msg.Before[col.Name] = col.Value
+		}
+	} else if e.IsUpdate() {
+		d.msg.Before = make(map[string]interface{})
+		for _, col := range e.PreColumns {
+			d.msg.Before[col.Name] = col.Value
+		}
+		d.msg.After = make(map[string]interface{})
+		for _, col := range e.Columns {
+			d.msg.After[col.Name] = col.Value
+		}
+	} else {
+		d.msg.After = make(map[string]interface{})
+		for _, col := range e.Columns {
+			d.msg.After[col.Name] = convertColumnValue(col)
+		}
+	}
 	return d
+}
+
+func convertColumnValue(col *model.Column) interface{} {
+	if col.Value == nil {
+		return nil
+	}
+	switch col.Type {
+	case mysql.TypeNull:
+		return nil
+	case mysql.TypeBit:
+		return col.Value
+	case mysql.TypeBlob:
+		// convert to base64
+		return base64.StdEncoding.EncodeToString(col.Value.([]byte))
+
+	case mysql.TypeTiny | mysql.TypeShort | mysql.TypeLong | mysql.TypeLonglong | mysql.TypeInt24:
+		return col.Value
+	default:
+		return col.Value
+	}
+}
+
+func getOp(e *model.RowChangedEvent) string {
+	if e.IsDelete() {
+		return "d"
+	} else if e.IsUpdate() {
+		return "u"
+	}
+	return "c"
 }
 
 func (d *DMLPayloadBuilder) Build() *DMLPayload {
