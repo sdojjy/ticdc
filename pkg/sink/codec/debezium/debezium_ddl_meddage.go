@@ -13,11 +13,6 @@
 
 package debezium
 
-type ddlMessage struct {
-	Schema  schema     `json:"schema"`
-	Payload ddlPayload `json:"payload"`
-}
-
 type ddlPayload struct {
 	Source       ddlSource      `json:"source"`
 	Position     binlogPosition `json:"position"`
