@@ -66,7 +66,23 @@ func (d *DMLPayloadBuilder) WithRowChangedEvent(e *model.RowChangedEvent) *DMLPa
 		Op:          getOp(e),
 		TsMs:        int64(e.CommitTs),
 		Transaction: nil,
-		Source:      nil,
+		Source: &DMLSource{
+			Version:   "",
+			Connector: "",
+			Name:      "",
+			TsMs:      0,
+			Snapshot:  "",
+			Db:        "",
+			Sequence:  nil,
+			Table:     "",
+			ServerId:  1,
+			Gtid:      nil,
+			File:      "",
+			Pos:       0,
+			Row:       0,
+			Thread:    0,
+			Query:     nil,
+		},
 	}
 	if e.IsDelete() {
 		d.msg.Before = make(map[string]interface{})
