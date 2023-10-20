@@ -111,6 +111,7 @@ func convertColumnValue(col *model.Column) interface{} {
 	if col.Value == nil {
 		return nil
 	}
+	//todo: convert to debezium type
 	switch col.Type {
 	case mysql.TypeNull:
 		return nil
