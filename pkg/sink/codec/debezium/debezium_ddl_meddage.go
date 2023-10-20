@@ -14,6 +14,8 @@
 package debezium
 
 import (
+	"fmt"
+
 	parsermodel "github.com/pingcap/tidb/parser/model"
 	"github.com/pingcap/tidb/parser/mysql"
 	"github.com/pingcap/tiflow/cdc/model"
@@ -25,7 +27,7 @@ type DDLPayload struct {
 	TsMs         int64           `json:"ts_ms"`
 	DatabaseName string          `json:"databaseName"`
 	DDL          string          `json:"ddl"`
-	TableChanges []tableChange   `json:"tableChanges"`
+	TableChanges []*tableChange  `json:"tableChanges"`
 }
 
 type ddlSource struct {
@@ -79,8 +81,10 @@ func (d *DDLPayloadBuilder) Build(e *model.DDLEvent) *DDLPayload {
 	d.msg.Source = &ddlSource{}
 	d.msg.Position = &binlogPosition{}
 	if e.TableInfo != nil {
-		change := tableChange{}
-		d.msg.TableChanges = []tableChange{change}
+		change := &tableChange{
+			ID: fmt.Sprintf("%s.%s", e.TableInfo.TableName.Schema, e.TableInfo.TableName.Table),
+		}
+		d.msg.TableChanges = []*tableChange{change}
 		switch e.Type {
 		case parsermodel.ActionCreateTable:
 			change.Type = "CREATE"
