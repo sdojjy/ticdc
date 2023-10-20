@@ -115,61 +115,13 @@ func (d *DmlMessageBuilder) WithChangeEvent(e *model.RowChangedEvent) *DmlMessag
 	d.schemaMsg = &Message{
 		Values: []interface{}{
 			"struct",
-			[]interface{}{
-				&Message{
-					Values: []interface{}{
-						"struct",
-						true,
-						[]interface{}{
-							&Message{
-								Values: []interface{}{
-									"int32",
-									false,
-									"id",
-								},
-							},
-							&Message{
-								Values: []interface{}{
-									"STRING",
-									true,
-									"name",
-								},
-							},
-						},
-						"tutorial.test.t5.Value",
-						"before",
-					},
-				},
-				&Message{
-					Values: []interface{}{
-						"struct",
-						true,
-						[]interface{}{
-							&Message{
-								Values: []interface{}{
-									"int32",
-									false,
-									"id",
-								},
-							},
-							&Message{
-								Values: []interface{}{
-									"STRING",
-									true,
-									"name",
-								},
-							},
-						},
-						"tutorial.test.t5.Value",
-						"after",
-					},
-				},
-			},
+			values,
 			true,
 			fmt.Sprintf("%s.%s.%s", d.connectName, e.TableInfo.TableName.Schema, e.TableInfo.TableName.Table),
 			int32(1),
 		},
 	}
+
 	return d
 }
 
