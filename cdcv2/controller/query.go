@@ -179,7 +179,7 @@ func (o *controllerImpl) handleQueries(query *Query) error {
 		for _, cf := range o.changefeeds {
 			uuids = append(uuids, cf.info.UUID)
 		}
-		progressMap, err := o.catptureObezervation.GetChangefeedProgress(uuids...)
+		progressMap, err := o.querier.GetChangefeedProgress(uuids...)
 		if err != nil {
 			return errors.Trace(err)
 		}
@@ -201,7 +201,7 @@ func (o *controllerImpl) handleQueries(query *Query) error {
 			}
 			uuids = append(uuids, cf.info.UUID)
 		}
-		states, err := o.catptureObezervation.GetChangefeedState(uuids...)
+		states, err := o.querier.GetChangefeedState(uuids...)
 		if err != nil {
 			return errors.Trace(err)
 		}

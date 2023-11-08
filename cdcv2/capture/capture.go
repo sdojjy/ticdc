@@ -18,11 +18,8 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
-	"net"
-	"net/url"
 	"sync"
 
-	dmysql "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
@@ -40,14 +37,12 @@ import (
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/etcd"
 	"github.com/pingcap/tiflow/pkg/p2p"
-	"github.com/pingcap/tiflow/pkg/security"
 	"github.com/pingcap/tiflow/pkg/upstream"
 	"github.com/pingcap/tiflow/pkg/version"
 	pd "github.com/tikv/pd/client"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
-	"gorm.io/gorm"
 )
 
 // NewCapture returns a new Capture instance
@@ -105,8 +100,9 @@ type captureImpl struct {
 	cancel context.CancelFunc
 
 	storage            *sql.DB
-	captureDB          *msql.CaptureOb[*gorm.DB]
+	captureObservation metadata.CaptureObservation
 	controllerObserver metadata.ControllerObservation
+	querier            metadata.Querier
 }
 
 func (c *captureImpl) GetUpstreamInfo(ctx context.Context,
@@ -164,19 +160,12 @@ func (c *captureImpl) run(stdCtx context.Context) error {
 		log.Error("reset capture failed", zap.Error(err))
 		return errors.Trace(err)
 	}
-	//todo: start register to metadata store
-	//err = c.register(stdCtx)
-	if err != nil {
-		return errors.Trace(err)
-	}
-
 	defer func() {
 		c.Close()
 		c.grpcService.Reset(nil)
 	}()
 
 	g, stdCtx := errgroup.WithContext(stdCtx)
-	//stdCtx, cancel := context.WithCancel(stdCtx)
 
 	ctx := cdcContext.NewContext(stdCtx, &cdcContext.GlobalVars{
 		CaptureInfo:       c.info,
@@ -186,48 +175,18 @@ func (c *captureImpl) run(stdCtx context.Context) error {
 		SortEngineFactory: c.sortEngineFactory,
 	})
 
-	//g.Go(func() error {
-	//	// Processor manager should be closed as soon as possible to prevent double write issue.
-	//	defer func() {
-	//		if cancel != nil {
-	//			// Propagate the cancel signal to the owner and other goroutines.
-	//			cancel()
-	//		}
-	//		log.Info("processor manager closed", zap.String("captureID", c.info.ID))
-	//	}()
-	//
-	//	globalState := orchestrator.NewGlobalState(c.EtcdClient.GetClusterID(), c.config.CaptureSessionTTL)
-	//
-	//	globalState.SetOnCaptureAdded(func(captureID model.CaptureID, addr string) {
-	//		c.MessageRouter.AddPeer(captureID, addr)
-	//	})
-	//	globalState.SetOnCaptureRemoved(func(captureID model.CaptureID) {
-	//		c.MessageRouter.RemovePeer(captureID)
-	//	})
-	//
-	//	// when the etcd worker of processor returns an error, it means that the processor throws an unrecoverable serious errors
-	//	// (recoverable errors are intercepted in the processor tick)
-	//	// so we should also stop the processor and let capture restart or exit
-	//
-	//	// run processors
-	//	//err := c.runEtcdWorker(ctx, c.processorManager, globalState, processorFlushInterval, util.RoleProcessor.String())
-	//	log.Info("processor routine exited",
-	//		zap.String("captureID", c.info.ID), zap.Error(err))
-	//	return err
-	//})
-
 	g.Go(func() error {
 		return c.MessageServer.Run(ctx, c.MessageRouter.GetLocalChannel())
 	})
 
 	g.Go(func() error {
-		return c.captureDB.Run(ctx,
+		return c.captureObservation.Run(ctx,
 			func(ctx context.Context,
 				controllerObserver metadata.ControllerObservation) error {
 				c.controllerObserver = controllerObserver
 				ctrl := controllerv2.NewController(
 					c.upstreamManager,
-					c.info, controllerObserver, c.captureDB)
+					c.info, controllerObserver, c.captureObservation, c.querier)
 				c.controller = ctrl
 				return ctrl.Run(ctx)
 			})
@@ -240,7 +199,6 @@ func (c *captureImpl) run(stdCtx context.Context) error {
 
 // reset the capture before run it.
 func (c *captureImpl) reset(ctx context.Context) error {
-
 	c.captureMu.Lock()
 	defer c.captureMu.Unlock()
 	c.info = &model.CaptureInfo{
@@ -278,7 +236,7 @@ func (c *captureImpl) reset(ctx context.Context) error {
 
 	c.MessageRouter = p2p.NewMessageRouterWithLocalClient(c.info.ID, c.config.Security, messageClientConfig)
 
-	dsnConfig, err := genBasicDSN(c.config.Debug.CDCV2.MetaStoreConfig)
+	dsnConfig, err := c.config.Debug.CDCV2.MetaStoreConfig.GenDSN()
 	if err != nil {
 		return errors.Trace(err)
 	}
@@ -287,80 +245,14 @@ func (c *captureImpl) reset(ctx context.Context) error {
 		return errors.Trace(err)
 	}
 	captureDB, err := msql.NewCaptureObservation(c.storage, c.info)
-	c.captureDB = captureDB
+	c.captureObservation = captureDB
+	c.querier = captureDB
 	if err != nil {
 		return errors.Trace(err)
 	}
 	c.owner = ownerv2.NewOwner(&c.liveness, c.upstreamManager, c.config.Debug.Scheduler, captureDB, captureDB, c.storage)
-
 	log.Info("capture initialized", zap.Any("capture", c.info))
 	return nil
-}
-
-// genBasicDSN generates a basic DSN from the given config.
-func genBasicDSN(storeConfig config.MetaStoreConfiguration) (*dmysql.Config, error) {
-	endpoint, err := url.Parse(storeConfig.URI)
-	if err != nil {
-		return nil, errors.Trace(err)
-	}
-	tls, err := getSSLParam(storeConfig)
-	if err != nil {
-		return nil, errors.Trace(err)
-	}
-	// dsn format of the driver:
-	// [username[:password]@][protocol[(address)]]/dbname[?param1=value1&...&paramN=valueN]
-	username := endpoint.User.Username()
-	if username == "" {
-		username = "root"
-	}
-	password, _ := endpoint.User.Password()
-
-	hostName := endpoint.Hostname()
-	port := endpoint.Port()
-	if port == "" {
-		port = "3306"
-	}
-
-	// This will handle the IPv6 address format.
-	var dsn *dmysql.Config
-	host := net.JoinHostPort(hostName, port)
-	dsnStr := fmt.Sprintf("%s:%s@tcp(%s)%s%s", username, password, host, endpoint.Path, tls)
-	if dsn, err = dmysql.ParseDSN(dsnStr); err != nil {
-		return nil, errors.Trace(err)
-	}
-
-	//dsn.DBName = strings.TrimLeft(endpoint.Path, "/")
-	// create test db used for parameter detection
-	// Refer https://github.com/go-sql-driver/mysql#parameters
-	if dsn.Params == nil {
-		dsn.Params = make(map[string]string, 1)
-	}
-	dsn.Params["parseTime"] = "true"
-	for key, pa := range endpoint.Query() {
-		dsn.Params[key] = pa[0]
-	}
-	return dsn, nil
-}
-
-func getSSLParam(storeConfig config.MetaStoreConfiguration) (string, error) {
-	if len(storeConfig.SSLCa) == 0 || len(storeConfig.SSLCert) == 0 || len(storeConfig.SSLKey) == 0 {
-		return "", nil
-	}
-	credential := security.Credential{
-		CAPath:   storeConfig.SSLCa,
-		CertPath: storeConfig.SSLCert,
-		KeyPath:  storeConfig.SSLKey,
-	}
-	tlsCfg, err := credential.ToTLSConfig()
-	if err != nil {
-		return "", errors.Trace(err)
-	}
-	name := "cdc_mysql_tls_meta_store"
-	err = dmysql.RegisterTLSConfig(name, tlsCfg)
-	if err != nil {
-		return "", cerror.ErrMySQLConnectionError.Wrap(err).GenWithStack("fail to open MySQL connection")
-	}
-	return "?tls=" + name, nil
 }
 
 func (c *captureImpl) Close() {
@@ -411,7 +303,7 @@ func (c *captureImpl) GetController() (controller.Controller, error) {
 }
 
 func (c *captureImpl) GetControllerCaptureInfo(ctx context.Context) (*model.CaptureInfo, error) {
-	return c.captureDB.GetController()
+	return c.captureObservation.GetController()
 }
 
 func (c *captureImpl) IsController() bool {

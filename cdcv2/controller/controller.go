@@ -11,6 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//nolint:unused
 package controller
 
 import (
@@ -24,15 +25,12 @@ import (
 	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdcv2/metadata"
-	msql "github.com/pingcap/tiflow/cdcv2/metadata/sql"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
-	"github.com/pingcap/tiflow/pkg/orchestrator"
 	"github.com/pingcap/tiflow/pkg/upstream"
 	"github.com/pingcap/tiflow/pkg/version"
 	"github.com/tikv/client-go/v2/oracle"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
-	"gorm.io/gorm"
 )
 
 type controllerJobType int
@@ -75,7 +73,8 @@ type controllerImpl struct {
 	captureInfo *model.CaptureInfo
 
 	controllerObservation metadata.ControllerObservation
-	catptureObezervation  *msql.CaptureOb[*gorm.DB]
+	catptureObezervation  metadata.CaptureObservation
+	querier               metadata.Querier
 }
 
 func (o *controllerImpl) CreateChangefeed(ctx context.Context,
@@ -99,7 +98,8 @@ func NewController(
 	upstreamManager *upstream.Manager,
 	captureInfo *model.CaptureInfo,
 	controllerObservation metadata.ControllerObservation,
-	captureObservation *msql.CaptureOb[*gorm.DB],
+	captureObservation metadata.CaptureObservation,
+	querier metadata.Querier,
 ) *controllerImpl {
 	return &controllerImpl{
 		upstreamManager:       upstreamManager,
@@ -110,16 +110,12 @@ func NewController(
 		captureInfo:           captureInfo,
 		controllerObservation: controllerObservation,
 		catptureObezervation:  captureObservation,
+		querier:               querier,
 	}
 }
 
-// Tick implements the Reactor interface
-func (o *controllerImpl) Tick(stdCtx context.Context, rawState orchestrator.ReactorState) (nextState orchestrator.ReactorState, err error) {
-	return nil, nil
-}
-
 func (o *controllerImpl) Run(stdCtx context.Context) error {
-	tick := time.Tick(time.Second)
+	tick := time.Tick(time.Second * 5)
 	for {
 		select {
 		case <-stdCtx.Done():
@@ -180,7 +176,7 @@ func (o *controllerImpl) Run(stdCtx context.Context) error {
 				captureChangefeedSize[changefeed.Owner]++
 			}
 			if len(changefeedUUIDs) > 0 {
-				infos, err := o.catptureObezervation.GetChangefeed(changefeedUUIDs...)
+				infos, err := o.querier.GetChangefeed(changefeedUUIDs...)
 				if err != nil {
 					continue
 				}
@@ -231,6 +227,9 @@ func (o *controllerImpl) Run(stdCtx context.Context) error {
 					delete(o.changefeeds, changefeedID)
 				}
 			}
+			log.Info("controller snapshot",
+				zap.Int("changefeeds", len(changefeeds)),
+				zap.Int("captures", len(captures)))
 
 			// if closed, exit the etcd worker loop
 			if atomic.LoadInt32(&o.closed) != 0 {
@@ -312,9 +311,9 @@ func (o *controllerImpl) calculateGCSafepoint(changefeeds []metadata.ScheduledCh
 	for _, changefeed := range changefeeds {
 		uuids = append(uuids, changefeed.ChangefeedUUID)
 	}
-	states, _ := o.catptureObezervation.GetChangefeedState(uuids...)
-	progressMap, _ := o.catptureObezervation.GetChangefeedProgress(uuids...)
-	infos, _ := o.catptureObezervation.GetChangefeed(uuids...)
+	states, _ := o.querier.GetChangefeedState(uuids...)
+	progressMap, _ := o.querier.GetChangefeedProgress(uuids...)
+	infos, _ := o.querier.GetChangefeed(uuids...)
 
 	stateMap := make(map[uint64]*metadata.ChangefeedState, len(states))
 	for _, state := range states {

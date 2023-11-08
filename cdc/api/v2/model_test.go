@@ -60,11 +60,12 @@ var defaultAPIConfig = &ReplicaConfig{
 		AdvanceTimeoutInSec:              util.AddressOf(uint(150)),
 	},
 	Consistent: &ConsistentConfig{
-		Level:             "none",
-		MaxLogSize:        64,
-		FlushIntervalInMs: redo.DefaultFlushIntervalInMs,
-		Storage:           "",
-		UseFileBackend:    false,
+		Level:                 "none",
+		MaxLogSize:            64,
+		FlushIntervalInMs:     redo.DefaultFlushIntervalInMs,
+		MetaFlushIntervalInMs: redo.DefaultMetaFlushIntervalInMs,
+		Storage:               "",
+		UseFileBackend:        false,
 	},
 	Scheduler: &ChangefeedSchedulerConfig{
 		EnableTableAcrossNodes: config.GetDefaultReplicaConfig().
@@ -80,6 +81,7 @@ var defaultAPIConfig = &ReplicaConfig{
 	},
 	ChangefeedErrorStuckDuration: &JSONDuration{*config.
 		GetDefaultReplicaConfig().ChangefeedErrorStuckDuration},
+	SQLMode: config.GetDefaultReplicaConfig().SQLMode,
 }
 
 func TestDefaultReplicaConfig(t *testing.T) {
