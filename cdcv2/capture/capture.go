@@ -16,6 +16,7 @@ package capture
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"io"
 	"sync"
 
@@ -30,6 +31,7 @@ import (
 	controllerv2 "github.com/pingcap/tiflow/cdcv2/controller"
 	"github.com/pingcap/tiflow/cdcv2/metadata"
 	msql "github.com/pingcap/tiflow/cdcv2/metadata/sql"
+	ownerv2 "github.com/pingcap/tiflow/cdcv2/owner"
 	"github.com/pingcap/tiflow/pkg/config"
 	cdcContext "github.com/pingcap/tiflow/pkg/context"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
@@ -73,7 +75,7 @@ type captureImpl struct {
 	pdClient        pd.Client
 	pdEndpoints     []string
 	ownerMu         sync.Mutex
-	owner           owner.Owner
+	owner           *ownerv2.OwnerImpl
 	controller      controller.Controller
 	upstreamManager *upstream.Manager
 
@@ -100,6 +102,13 @@ type captureImpl struct {
 	storage            *sql.DB
 	captureObservation metadata.CaptureObservation
 	controllerObserver metadata.ControllerObservation
+	querier            metadata.Querier
+}
+
+func (c *captureImpl) GetUpstreamInfo(ctx context.Context,
+	id model.UpstreamID,
+	s string) (*model.UpstreamInfo, error) {
+	panic("implement me")
 }
 
 func (c *captureImpl) Run(ctx context.Context) error {
@@ -173,15 +182,17 @@ func (c *captureImpl) run(stdCtx context.Context) error {
 	g.Go(func() error {
 		return c.captureObservation.Run(ctx,
 			func(ctx context.Context,
-				controllerObserver metadata.ControllerObservation,
-			) error {
+				controllerObserver metadata.ControllerObservation) error {
 				c.controllerObserver = controllerObserver
 				ctrl := controllerv2.NewController(
 					c.upstreamManager,
-					c.info, controllerObserver, c.captureObservation)
+					c.info, controllerObserver, c.captureObservation, c.querier)
 				c.controller = ctrl
 				return ctrl.Run(ctx)
 			})
+	})
+	g.Go(func() error {
+		return c.owner.Run(ctx)
 	})
 	return errors.Trace(g.Wait())
 }
@@ -235,9 +246,11 @@ func (c *captureImpl) reset(ctx context.Context) error {
 	}
 	captureDB, err := msql.NewCaptureObservation(c.storage, c.info)
 	c.captureObservation = captureDB
+	c.querier = captureDB
 	if err != nil {
 		return errors.Trace(err)
 	}
+	c.owner = ownerv2.NewOwner(&c.liveness, c.upstreamManager, c.config.Debug.Scheduler, captureDB, captureDB, c.storage)
 	log.Info("capture initialized", zap.Any("capture", c.info))
 	return nil
 }
@@ -290,7 +303,7 @@ func (c *captureImpl) GetController() (controller.Controller, error) {
 }
 
 func (c *captureImpl) GetControllerCaptureInfo(ctx context.Context) (*model.CaptureInfo, error) {
-	panic("implement me")
+	return c.captureObservation.GetController()
 }
 
 func (c *captureImpl) IsController() bool {
@@ -315,11 +328,44 @@ func (c *captureImpl) StatusProvider() owner.StatusProvider {
 	if c.owner == nil {
 		return nil
 	}
-	panic("implement me")
+	return ownerv2.NewStatusProvider(c.owner)
 }
 
 func (c *captureImpl) WriteDebugInfo(ctx context.Context, w io.Writer) {
-	panic("implement me")
+	wait := func(done <-chan error) {
+		var err error
+		select {
+		case <-ctx.Done():
+			err = ctx.Err()
+		case err = <-done:
+		}
+		if err != nil {
+			log.Warn("write debug info failed", zap.Error(err))
+		}
+	}
+	// Safety: Because we are mainly outputting information about the owner here,
+	// if the owner does not exist or is not set, the information will not be output.
+	o, _ := c.GetOwner()
+	if o != nil {
+		doneOwner := make(chan error, 1)
+		fmt.Fprintf(w, "\n\n*** owner info ***:\n\n")
+		o.WriteDebugInfo(w, doneOwner)
+		// wait the debug info printed
+		wait(doneOwner)
+	}
+
+	doneM := make(chan error, 1)
+	c.captureMu.Lock()
+	//if c.processorManager != nil {
+	//	fmt.Fprintf(w, "\n\n*** processors info ***:\n\n")
+	//	c.processorManager.WriteDebugInfo(ctx, w, doneM)
+	//}
+	// NOTICE: we must release the lock before wait the debug info process down.
+	// Otherwise, the capture initialization and request response will compete
+	// for captureMu resulting in a deadlock.
+	c.captureMu.Unlock()
+	// wait the debug info printed
+	wait(doneM)
 }
 
 func (c *captureImpl) GetUpstreamManager() (*upstream.Manager, error) {
@@ -334,12 +380,5 @@ func (c *captureImpl) GetEtcdClient() etcd.CDCEtcdClient {
 }
 
 func (c *captureImpl) IsReady() bool {
-	panic("implement me")
-}
-
-func (c *captureImpl) GetUpstreamInfo(ctx context.Context,
-	id model.UpstreamID,
-	s string,
-) (*model.UpstreamInfo, error) {
-	panic("implement me")
+	return true
 }
