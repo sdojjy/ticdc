@@ -32,6 +32,7 @@ import (
 	"github.com/pingcap/tiflow/pkg/version"
 	"go.etcd.io/etcd/client/v3/concurrency"
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 )
 
 var _ internal.Agent = (*agent)(nil)
@@ -50,6 +51,8 @@ type agent struct {
 	// 1. The capture receives a SIGTERM signal.
 	// 2. The agent receives a stopping heartbeat.
 	liveness *model.Liveness
+
+	checkpointTsLogRateLimiter *rate.Limiter
 }
 
 type agentInfo struct {
@@ -99,6 +102,8 @@ func newAgent(
 		tableM:    newTableSpanManager(changeFeedID, tableExecutor),
 		liveness:  liveness,
 		compat:    compat.New(cfg, map[model.CaptureID]*model.CaptureInfo{}),
+
+		checkpointTsLogRateLimiter: rate.NewLimiter(rate.Every(30*time.Second), 1),
 	}
 
 	etcdCliCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -269,7 +274,8 @@ func (a *agent) handleMessageHeartbeat(request *schedulepb.Heartbeat) (*schedule
 
 	allTables.Ascend(func(span tablepb.Span, table *tableSpan) bool {
 		status := table.getTableSpanStatus(request.CollectStats)
-		if status.Checkpoint.CheckpointTs > status.Checkpoint.ResolvedTs {
+		if status.Checkpoint.CheckpointTs > status.Checkpoint.ResolvedTs &&
+			a.checkpointTsLogRateLimiter.Allow() {
 			log.Warn("schedulerv3: CheckpointTs is greater than ResolvedTs",
 				zap.String("namespace", a.ChangeFeedID.Namespace),
 				zap.String("changefeed", a.ChangeFeedID.ID),

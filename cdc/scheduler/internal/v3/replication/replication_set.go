@@ -16,6 +16,7 @@ package replication
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/model"
@@ -23,6 +24,7 @@ import (
 	"github.com/pingcap/tiflow/cdc/scheduler/schedulepb"
 	"github.com/pingcap/tiflow/pkg/errors"
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 )
 
 // ReplicationSetState is the state of ReplicationSet in owner.
@@ -989,16 +991,20 @@ func (r *ReplicationSet) handleCaptureShutdown(
 	return msgs, true, errors.Trace(err)
 }
 
+var logRateLimiter = rate.NewLimiter(rate.Every(time.Second*30), 2)
+
 func (r *ReplicationSet) updateCheckpointAndStats(
 	checkpoint tablepb.Checkpoint, stats tablepb.Stats,
 ) {
 	if checkpoint.ResolvedTs < checkpoint.CheckpointTs {
-		log.Warn("schedulerv3: resolved ts should not less than checkpoint ts",
-			zap.String("namespace", r.Changefeed.Namespace),
-			zap.String("changefeed", r.Changefeed.ID),
-			zap.Int64("tableID", r.Span.TableID),
-			zap.Any("replicationSet", r),
-			zap.Any("checkpoint", checkpoint))
+		if logRateLimiter.Allow() {
+			log.Warn("schedulerv3: resolved ts should not less than checkpoint ts",
+				zap.String("namespace", r.Changefeed.Namespace),
+				zap.String("changefeed", r.Changefeed.ID),
+				zap.Int64("tableID", r.Span.TableID),
+				zap.Any("replicationSet", r),
+				zap.Any("checkpoint", checkpoint))
+		}
 
 		// TODO: resolvedTs should not be zero, but we have to handle it for now.
 		if checkpoint.ResolvedTs == 0 {
