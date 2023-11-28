@@ -53,13 +53,15 @@ for tool in $PROTOC $GO $GO_GRPC $GOGO_FASTER $GRPC_GATEWAY $GRPC_GATEWAY_V2 $OP
 	fi
 done
 
+
+generate ./proto/redo ./proto/RedoMsg.proto
 generate ./proto/canal ./proto/EntryProtocol.proto
 generate ./proto/canal ./proto/CanalProtocol.proto
 generate ./proto/benchmark ./proto/CraftBenchmark.proto
 generate ./proto/p2p ./proto/CDCPeerToPeer.proto plugins=grpc
 generate ./dm/pb ./dm/proto/dmworker.proto plugins=grpc,protoc-gen-grpc-gateway="$GRPC_GATEWAY"
 generate ./dm/pb ./dm/proto/dmmaster.proto plugins=grpc,protoc-gen-grpc-gateway="$GRPC_GATEWAY"
-shopt -s globstar
+#shopt -s globstar
 for pb in cdc/**/*.proto; do
 	# Output generated go files next to protobuf files.
 	generate ./cdc $pb paths="source_relative"

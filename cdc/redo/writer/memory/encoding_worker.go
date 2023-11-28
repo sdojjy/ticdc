@@ -27,6 +27,10 @@ import (
 	"github.com/pingcap/tiflow/pkg/redo"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
+
+	predo "github.com/pingcap/tiflow/proto/redo"
+
+	"github.com/tinylib/msgp/msgp"
 )
 
 var (
@@ -68,6 +72,67 @@ func (e *polymorphicRedoEvent) reset() {
 // encoding format: lenField(8 bytes) + rawData + padding bytes(force 8 bytes alignment)
 func (e *polymorphicRedoEvent) encode() (err error) {
 	redoLog := e.event.ToRedoLog()
+	plog := &predo.RedoLog{}
+	plog.Type = predo.Type_DML
+	index := make([]*predo.IntArr, len(redoLog.RedoRow.Row.IndexColumns))
+	cols := make([]*predo.RedoColumn, len(redoLog.RedoRow.Row.Columns))
+	for i, col := range redoLog.RedoRow.Row.Columns {
+		v, _ := msgp.AppendIntf(nil, col.Value)
+		cols[i] = &predo.RedoColumn{
+			Name:      col.Name,
+			Type:      int32(col.Type),
+			Charset:   col.Charset,
+			Collation: col.Collation,
+			Flag:      uint64(col.Flag),
+			Value:     v,
+		}
+		cv, _, err := msgp.ReadIntfBytes(v)
+		log.Info("col", zap.Any("col", cv), zap.Error(err))
+	}
+
+	precols := make([]*predo.RedoColumn, len(redoLog.RedoRow.Row.PreColumns))
+	for i, col := range redoLog.RedoRow.Row.PreColumns {
+		v, _ := msgp.AppendIntf(nil, col.Value)
+		cols[i] = &predo.RedoColumn{
+			Name:      col.Name,
+			Type:      int32(col.Type),
+			Charset:   col.Charset,
+			Collation: col.Collation,
+			Flag:      uint64(col.Flag),
+			Value:     v,
+		}
+		cv, _, err := msgp.ReadIntfBytes(v)
+		log.Info("col", zap.Any("col", cv), zap.Error(err))
+	}
+
+	for i, idx := range redoLog.RedoRow.Row.IndexColumns {
+		idex32 := make([]int32, len(idx))
+		for j, id := range idx {
+			idex32[j] = int32(id)
+		}
+		index[i] = &predo.IntArr{
+			Value: idex32,
+		}
+	}
+	plog.Row = &predo.RedoRowChangedEvent{
+		Row: &predo.RowChangedEvent{
+			CommitTs: redoLog.GetCommitTs(),
+			StartTs:  redoLog.RedoRow.Row.StartTs,
+			Table: &predo.TableName{
+				Schema:      redoLog.RedoRow.Row.Table.Schema,
+				Table:       redoLog.RedoRow.Row.Table.Table,
+				TableId:     redoLog.RedoRow.Row.Table.TableID,
+				IsPartition: redoLog.RedoRow.Row.Table.IsPartition,
+			},
+			IndexIds: index,
+		},
+		Columns:    cols,
+		PreColumns: precols,
+	}
+
+	pbuf, err := plog.Marshal()
+	log.Info("plog", zap.Int("plog", len(pbuf)))
+
 	e.commitTs = redoLog.GetCommitTs()
 
 	rawData, err := redoLog.MarshalMsg(nil)
