@@ -324,6 +324,23 @@ func convert2RowChanges(
 		postValues = append(postValues, col.Value)
 	}
 	tableName := routerTable(tableRouter, &row.TableInfo.TableName)
+	if tableRouter != nil {
+		cols, vals := tableRouter.FetchExtendColumn(tableName.Schema, tableName.Table, "cdc")
+		if len(cols) > 0 {
+			for _, col := range cols {
+				row.TableInfo.Columns = append(row.TableInfo.Columns, &timodel.ColumnInfo{
+					Name: timodel.CIStr{
+						O: col,
+						L: strings.ToLower(col),
+					},
+				})
+			}
+			for _, v := range vals {
+				postValues = append(postValues, v)
+				preValues = append(preValues, v)
+			}
+		}
+	}
 
 	var res *sqlmodel.RowChange
 
@@ -625,6 +642,21 @@ func (s *mysqlBackend) prepareDMLs() *preparedDMLs {
 		tableName := routerTable(s.tableRouter, &firstRow.TableInfo.TableName)
 		quoteTable := tableName.QuoteString()
 		for _, row := range event.Event.Rows {
+			if s.tableRouter != nil {
+				cols, vals := s.tableRouter.FetchExtendColumn(tableName.Schema, tableName.Table, "cdc")
+				if len(cols) > 0 {
+					for _, col := range cols {
+						row.Columns = append(row.Columns, &model.Column{
+							Name: col,
+						})
+					}
+					extVals := make([]interface{}, 0, len(vals))
+					for _, v := range vals {
+						extVals = append(extVals, v)
+					}
+					values = append(values, extVals)
+				}
+			}
 			var query string
 			var args []interface{}
 			// If the old value is enabled, is not in safe mode and is an update event, then translate to UPDATE.

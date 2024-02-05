@@ -26,10 +26,15 @@ import (
 	"github.com/pingcap/tidb/pkg/parser"
 	"github.com/pingcap/tidb/pkg/parser/format"
 	"github.com/pingcap/tidb/pkg/parser/mysql"
+	"github.com/pingcap/tidb/pkg/util/filter"
+	regexprrouter "github.com/pingcap/tidb/pkg/util/regexpr-router"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/sink/ddlsink"
 	"github.com/pingcap/tiflow/cdc/sink/ddlsink/factory"
 	"github.com/pingcap/tiflow/cdc/syncpointstore"
+	"github.com/pingcap/tiflow/dm/pkg/conn"
+	parserpkg "github.com/pingcap/tiflow/dm/pkg/parser"
+	"github.com/pingcap/tiflow/dm/pkg/terror"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/retry"
 	"github.com/pingcap/tiflow/pkg/util"
@@ -89,6 +94,8 @@ type ddlSinkImpl struct {
 	sinkRetry     *retry.ErrorRetry
 	reportError   func(err error)
 	reportWarning func(err error)
+
+	tableRouter *regexprrouter.RouteTable
 }
 
 func newDDLSink(
@@ -475,5 +482,46 @@ func (s *ddlSinkImpl) addSpecialComment(ddl *model.DDLEvent) (string, error) {
 		zap.String("collate", ddl.Collate),
 		zap.String("result", result))
 
+	//result = genDDLInfo(nil, result)
 	return result, nil
+}
+
+// genDDLInfo generates ddl info by given sql.
+func genDDLInfo(tableRouter *regexprrouter.RouteTable, sql string) (string, error) {
+	p := parser.New()
+	stmt, err := p.ParseOneStmt(sql, "", "")
+	if err != nil {
+		return "", terror.Annotatef(terror.ErrSyncerUnitParseStmt.New(err.Error()), "ddl %s", sql)
+	}
+	// get another stmt, one for representing original ddl, one for letting other function modify it.
+	stmt2, _ := p.ParseOneStmt(sql, "", "")
+
+	sourceTables, err := parserpkg.FetchDDLTables("todo", stmt, conn.LCTableNamesInsensitive)
+	if err != nil {
+		return "", err
+	}
+
+	targetTables := make([]*filter.Table, 0, len(sourceTables))
+	for i := range sourceTables {
+		renamedTable := route(tableRouter, sourceTables[i])
+		targetTables = append(targetTables, renamedTable)
+	}
+	routedDDL, err := parserpkg.RenameDDLTable(stmt2, targetTables)
+	return routedDDL, err
+}
+
+func route(tableRouter *regexprrouter.RouteTable, table *filter.Table) *filter.Table {
+	if table.Schema == "" {
+		return table
+	}
+	// nolint:errcheck
+	targetSchema, targetTable, _ := tableRouter.Route(table.Schema, table.Name)
+	if targetSchema == "" {
+		return table
+	}
+	if targetTable == "" {
+		targetTable = table.Name
+	}
+
+	return &filter.Table{Schema: targetSchema, Name: targetTable}
 }
