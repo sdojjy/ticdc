@@ -482,7 +482,7 @@ func (c *ReplicaConfig) toInternalReplicaConfigWithOriginConfig(
 		}
 		if c.Sink.Routers != nil {
 			res.Sink.RouteRules = make([]*router.TableRule, len(c.Sink.Routers))
-			for i, rule := range res.Sink.RouteRules {
+			for i, rule := range c.Sink.Routers {
 				res.Sink.RouteRules[i] = &router.TableRule{
 					SchemaPattern: rule.SchemaPattern,
 					TablePattern:  rule.TablePattern,
