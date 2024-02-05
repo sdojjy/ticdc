@@ -24,6 +24,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
+	router "github.com/pingcap/tidb/pkg/util/table-router"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/sink"
 	"github.com/pingcap/tiflow/pkg/util"
@@ -188,6 +189,9 @@ type SinkConfig struct {
 
 	// Debezium only. Whether schema should be excluded in the output.
 	DebeziumDisableSchema *bool `toml:"debezium-disable-schema" json:"debezium-disable-schema,omitempty"`
+
+	// TableRules is only available when the downstream is mysql.
+	RouteRules []*router.TableRule `toml:"route-rules" json:"route-rules"`
 }
 
 // MaskSensitiveData masks sensitive data in SinkConfig

@@ -19,6 +19,7 @@ import (
 
 	"github.com/pingcap/errors"
 	bf "github.com/pingcap/tidb-tools/pkg/binlog-filter"
+	router "github.com/pingcap/tidb/pkg/util/table-router"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/pkg/config"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
@@ -479,6 +480,17 @@ func (c *ReplicaConfig) toInternalReplicaConfigWithOriginConfig(
 		if c.Sink.SendBootstrapToAllPartition != nil {
 			res.Sink.SendBootstrapToAllPartition = util.AddressOf(*c.Sink.SendBootstrapToAllPartition)
 		}
+		if c.Sink.Routers != nil {
+			res.Sink.RouteRules = make([]*router.TableRule, len(c.Sink.Routers))
+			for i, rule := range res.Sink.RouteRules {
+				res.Sink.RouteRules[i] = &router.TableRule{
+					SchemaPattern: rule.SchemaPattern,
+					TablePattern:  rule.TablePattern,
+					TargetSchema:  rule.TargetSchema,
+					TargetTable:   rule.TargetTable,
+				}
+			}
+		}
 	}
 	if c.Mounter != nil {
 		res.Mounter = &config.MounterConfig{
@@ -762,6 +774,17 @@ func ToAPIReplicaConfig(c *config.ReplicaConfig) *ReplicaConfig {
 		if cloned.Sink.DebeziumDisableSchema != nil {
 			res.Sink.DebeziumDisableSchema = util.AddressOf(*cloned.Sink.DebeziumDisableSchema)
 		}
+		if cloned.Sink.RouteRules != nil {
+			res.Sink.Routers = make([]*TableRule, len(cloned.Sink.RouteRules))
+			for i, rule := range cloned.Sink.RouteRules {
+				res.Sink.Routers[i] = &TableRule{
+					SchemaPattern: rule.SchemaPattern,
+					TablePattern:  rule.TablePattern,
+					TargetSchema:  rule.TargetSchema,
+					TargetTable:   rule.TargetTable,
+				}
+			}
+		}
 	}
 	if cloned.Consistent != nil {
 		res.Consistent = &ConsistentConfig{
@@ -925,6 +948,7 @@ type SinkConfig struct {
 	SendBootstrapInMsgCount          *int32              `json:"send_bootstrap_in_msg_count,omitempty"`
 	SendBootstrapToAllPartition      *bool               `json:"send_bootstrap_to_all_partition,omitempty"`
 	DebeziumDisableSchema            *bool               `json:"debezium_disable_schema,omitempty"`
+	Routers                          []*TableRule        `json:"routers,omitempty"`
 }
 
 // CSVConfig denotes the csv config
@@ -1266,4 +1290,13 @@ type GlueSchemaRegistryConfig struct {
 	// SecretAccessKey of the schema registry
 	SecretAccessKey string `json:"secret_access_key,omitempty"`
 	Token           string `json:"token,omitempty"`
+}
+
+// TableRule is a rule to route schema/table to target schema/table
+// pattern format refers 'pkg/table-rule-selector'
+type TableRule struct {
+	SchemaPattern string `json:"schema_pattern" `
+	TablePattern  string `json:"table_pattern" `
+	TargetSchema  string `json:"target_schema" `
+	TargetTable   string `json:"target_table"`
 }
