@@ -21,8 +21,14 @@ import (
 	"time"
 
 	"github.com/pingcap/errors"
+	"github.com/pingcap/tidb/pkg/parser"
+	"github.com/pingcap/tidb/pkg/util/filter"
+	regexprrouter "github.com/pingcap/tidb/pkg/util/regexpr-router"
+	router "github.com/pingcap/tidb/pkg/util/table-router"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/sink/ddlsink"
+	"github.com/pingcap/tiflow/dm/pkg/conn"
+	parserpkg "github.com/pingcap/tiflow/dm/pkg/parser"
 	"github.com/pingcap/tiflow/pkg/config"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/retry"
@@ -565,4 +571,34 @@ func TestAddSpecialComment(t *testing.T) {
 			"auto_increment = 12;",
 	})
 	require.NotNil(t, err)
+}
+
+func TestRewriteRenameTable(t *testing.T) {
+	sql := "alter table cdc.rename_test rename to cdc.rename_test1"
+	p := parser.New()
+	stmt, err := p.ParseOneStmt(sql, "", "")
+	require.Nil(t, err)
+	// get another stmt, one for representing original ddl, one for letting other function modify it.
+	stmt2, _ := p.ParseOneStmt(sql, "", "")
+
+	sourceTables, err := parserpkg.FetchDDLTables("cdcd", stmt, conn.LCTableNamesInsensitive)
+	require.Nil(t, err)
+
+	tableRouter, err := regexprrouter.NewRegExprRouter(false, []*router.TableRule{
+		{
+			SchemaPattern: "cdc",
+			TablePattern:  "*",
+			TargetSchema:  "cdc2",
+			TargetTable:   "b",
+		},
+	})
+	require.Nil(t, err)
+	targetTables := make([]*filter.Table, 0, len(sourceTables))
+	for i := range sourceTables {
+		renamedTable := route(tableRouter, sourceTables[i])
+		targetTables = append(targetTables, renamedTable)
+	}
+	routedDDL, err := parserpkg.RenameDDLTable(stmt2, targetTables)
+	require.Nil(t, err)
+	println(routedDDL)
 }
