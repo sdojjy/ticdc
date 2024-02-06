@@ -115,6 +115,16 @@ func newDDLSink(
 		reportError:   reportError,
 		reportWarning: reportWarning,
 	}
+	if info.Config.Sink.RouteRules != nil {
+		tableRouter, err := regexprrouter.NewRegExprRouter(
+			info.Config.CaseSensitive,
+			info.Config.Sink.RouteRules)
+		if err != nil {
+			log.Warn("create table router failed", zap.Error(err))
+		} else {
+			res.tableRouter = tableRouter
+		}
+	}
 	return res
 }
 
@@ -434,6 +444,13 @@ func (s *ddlSinkImpl) close(ctx context.Context) (err error) {
 
 // addSpecialComment translate tidb feature to comment
 func (s *ddlSinkImpl) addSpecialComment(ddl *model.DDLEvent) (string, error) {
+	if s.tableRouter != nil {
+		result, err := s.genDDLInfo(s.tableRouter, *ddl)
+		if err != nil {
+			return "", errors.Trace(err)
+		}
+		ddl.Query = result
+	}
 	p := parser.New()
 	// We need to use the correct SQL mode to parse the DDL query.
 	// Otherwise, the parser may fail to parse the DDL query.
@@ -481,22 +498,26 @@ func (s *ddlSinkImpl) addSpecialComment(ddl *model.DDLEvent) (string, error) {
 		zap.String("charset", ddl.Charset),
 		zap.String("collate", ddl.Collate),
 		zap.String("result", result))
-
 	//result = genDDLInfo(nil, result)
 	return result, nil
 }
 
 // genDDLInfo generates ddl info by given sql.
-func genDDLInfo(tableRouter *regexprrouter.RouteTable, sql string) (string, error) {
+func (s *ddlSinkImpl) genDDLInfo(tableRouter *regexprrouter.RouteTable, ddl model.DDLEvent) (string, error) {
 	p := parser.New()
-	stmt, err := p.ParseOneStmt(sql, "", "")
+	mode, err := mysql.GetSQLMode(s.info.Config.SQLMode)
 	if err != nil {
-		return "", terror.Annotatef(terror.ErrSyncerUnitParseStmt.New(err.Error()), "ddl %s", sql)
+		return "", errors.Trace(err)
+	}
+	p.SetSQLMode(mode)
+	stmt, err := p.ParseOneStmt(ddl.Query, ddl.Charset, ddl.Collate)
+	if err != nil {
+		return "", terror.Annotatef(terror.ErrSyncerUnitParseStmt.New(err.Error()), "ddl %s", ddl.Query)
 	}
 	// get another stmt, one for representing original ddl, one for letting other function modify it.
-	stmt2, _ := p.ParseOneStmt(sql, "", "")
+	stmt2, _ := p.ParseOneStmt(ddl.Query, ddl.Charset, ddl.Collate)
 
-	sourceTables, err := parserpkg.FetchDDLTables("todo", stmt, conn.LCTableNamesInsensitive)
+	sourceTables, err := parserpkg.FetchDDLTables(ddl.TableInfo.GetSchemaName(), stmt, conn.LCTableNamesInsensitive)
 	if err != nil {
 		return "", err
 	}

@@ -32,7 +32,7 @@ import (
 	timodel "github.com/pingcap/tidb/pkg/parser/model"
 	"github.com/pingcap/tidb/pkg/parser/mysql"
 	"github.com/pingcap/tidb/pkg/sessionctx/variable"
-	router "github.com/pingcap/tidb/pkg/util/table-router"
+	regexprrouter "github.com/pingcap/tidb/pkg/util/regexpr-router"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/sink/dmlsink"
 	"github.com/pingcap/tiflow/cdc/sink/metrics"
@@ -82,7 +82,7 @@ type mysqlBackend struct {
 	maxAllowedPacket int64
 
 	replicaConfig *config.ReplicaConfig
-	tableRouter   *router.Table
+	tableRouter   *regexprrouter.RouteTable
 }
 
 // NewMySQLBackends creates a new MySQL sink using schema storage
@@ -180,9 +180,9 @@ func NewMySQLBackends(
 		maxAllowedPacket = int64(variable.DefMaxAllowedPacket)
 	}
 
-	var tableRouter *router.Table
+	var tableRouter *regexprrouter.RouteTable
 	if replicaConfig.Sink.RouteRules != nil {
-		tableRouter, err = router.NewTableRouter(replicaConfig.CaseSensitive, replicaConfig.Sink.RouteRules)
+		tableRouter, err = regexprrouter.NewRegExprRouter(replicaConfig.CaseSensitive, replicaConfig.Sink.RouteRules)
 		if err != nil {
 			return nil, errors.Trace(err)
 		}
@@ -303,7 +303,7 @@ func convert2RowChanges(
 	row *model.RowChangedEvent,
 	tableInfo *timodel.TableInfo,
 	changeType sqlmodel.RowChangeType,
-	tableRouter *router.Table,
+	tableRouter *regexprrouter.RouteTable,
 ) *sqlmodel.RowChange {
 	preValues := make([]interface{}, 0, len(row.PreColumns))
 	for _, col := range row.PreColumns {
@@ -374,7 +374,7 @@ func convert2RowChanges(
 	return res
 }
 
-func routerTable(tableRouter *router.Table, tableName *model.TableName) *model.TableName {
+func routerTable(tableRouter *regexprrouter.RouteTable, tableName *model.TableName) *model.TableName {
 	if tableRouter != nil {
 		schema, table, err := tableRouter.Route(tableName.Schema, tableName.Table)
 		if err != nil {

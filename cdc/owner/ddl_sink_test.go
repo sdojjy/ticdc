@@ -590,6 +590,9 @@ func TestRewriteRenameTable(t *testing.T) {
 			TablePattern:  "*",
 			TargetSchema:  "cdc2",
 			TargetTable:   "b",
+		}, {
+			SchemaPattern: "cdc",
+			TargetSchema:  "cdc2",
 		},
 	})
 	require.Nil(t, err)
