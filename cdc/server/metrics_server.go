@@ -17,7 +17,9 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"time"
 
+	"github.com/pingcap/tiflow/pkg/version"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -46,7 +48,28 @@ var (
 			Name:      "go_max_procs",
 			Help:      "The value of GOMAXPROCS",
 		})
+
+	uptime = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "ticdc",
+			Subsystem: "server",
+			Name:      "uptime",
+			Help:      "The value of cdc server uptime",
+		}, []string{"version", "hash"})
 )
+
+type uptimeCollector struct {
+	uptimeGauge prometheus.Gauge
+}
+
+func (c *uptimeCollector) Describe(ch chan<- *prometheus.Desc) {
+	c.uptimeGauge.Describe(ch)
+}
+
+func (c *uptimeCollector) Collect(ch chan<- prometheus.Metric) {
+	c.uptimeGauge.Set(float64(time.Now().Unix()))
+	c.uptimeGauge.Collect(ch)
+}
 
 // RecordGoRuntimeSettings records GOGC settings.
 func RecordGoRuntimeSettings() {
@@ -66,4 +89,6 @@ func initServerMetrics(registry *prometheus.Registry) {
 	registry.MustRegister(etcdHealthCheckDuration)
 	registry.MustRegister(goGC)
 	registry.MustRegister(goMaxProcs)
+	uptimeGauge := uptime.WithLabelValues(version.ReleaseVersion, version.GitHash)
+	registry.MustRegister(&uptimeCollector{uptimeGauge: uptimeGauge})
 }
