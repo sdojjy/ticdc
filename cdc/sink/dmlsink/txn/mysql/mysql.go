@@ -32,6 +32,7 @@ import (
 	timodel "github.com/pingcap/tidb/pkg/parser/model"
 	"github.com/pingcap/tidb/pkg/parser/mysql"
 	"github.com/pingcap/tidb/pkg/sessionctx/variable"
+	regexprrouter "github.com/pingcap/tidb/pkg/util/regexpr-router"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/sink/dmlsink"
 	"github.com/pingcap/tiflow/cdc/sink/metrics"
@@ -79,6 +80,9 @@ type mysqlBackend struct {
 	// Indicate if the CachePrepStmts should be enabled or not
 	cachePrepStmts   bool
 	maxAllowedPacket int64
+
+	replicaConfig *config.ReplicaConfig
+	tableRouter   *regexprrouter.RouteTable
 }
 
 // NewMySQLBackends creates a new MySQL sink using schema storage
@@ -176,6 +180,13 @@ func NewMySQLBackends(
 		maxAllowedPacket = int64(variable.DefMaxAllowedPacket)
 	}
 
+	var tableRouter *regexprrouter.RouteTable
+	if replicaConfig.Sink.RouteRules != nil {
+		tableRouter, err = regexprrouter.NewRegExprRouter(replicaConfig.CaseSensitive, replicaConfig.Sink.RouteRules)
+		if err != nil {
+			return nil, errors.Trace(err)
+		}
+	}
 	backends := make([]*mysqlBackend, 0, cfg.WorkerCount)
 	for i := 0; i < cfg.WorkerCount; i++ {
 		backends = append(backends, &mysqlBackend{
@@ -192,6 +203,9 @@ func NewMySQLBackends(
 			stmtCache:                       stmtCache,
 			cachePrepStmts:                  cachePrepStmts,
 			maxAllowedPacket:                maxAllowedPacket,
+
+			replicaConfig: replicaConfig,
+			tableRouter:   tableRouter,
 		})
 	}
 
@@ -289,6 +303,7 @@ func convert2RowChanges(
 	row *model.RowChangedEvent,
 	tableInfo *timodel.TableInfo,
 	changeType sqlmodel.RowChangeType,
+	tableRouter *regexprrouter.RouteTable,
 ) *sqlmodel.RowChange {
 	preValues := make([]interface{}, 0, len(row.PreColumns))
 	for _, col := range row.PreColumns {
@@ -308,13 +323,31 @@ func convert2RowChanges(
 		}
 		postValues = append(postValues, col.Value)
 	}
+	tableName := routerTable(tableRouter, &row.TableInfo.TableName)
+	if tableRouter != nil {
+		cols, vals := tableRouter.FetchExtendColumn(tableName.Schema, tableName.Table, "cdc")
+		if len(cols) > 0 {
+			for _, col := range cols {
+				row.TableInfo.Columns = append(row.TableInfo.Columns, &timodel.ColumnInfo{
+					Name: timodel.CIStr{
+						O: col,
+						L: strings.ToLower(col),
+					},
+				})
+			}
+			for _, v := range vals {
+				postValues = append(postValues, v)
+				preValues = append(preValues, v)
+			}
+		}
+	}
 
 	var res *sqlmodel.RowChange
 
 	switch changeType {
 	case sqlmodel.RowChangeInsert:
 		res = sqlmodel.NewRowChange(
-			&row.TableInfo.TableName,
+			tableName,
 			nil,
 			nil,
 			postValues,
@@ -322,7 +355,7 @@ func convert2RowChanges(
 			nil, nil)
 	case sqlmodel.RowChangeUpdate:
 		res = sqlmodel.NewRowChange(
-			&row.TableInfo.TableName,
+			tableName,
 			nil,
 			preValues,
 			postValues,
@@ -330,7 +363,7 @@ func convert2RowChanges(
 			nil, nil)
 	case sqlmodel.RowChangeDelete:
 		res = sqlmodel.NewRowChange(
-			&row.TableInfo.TableName,
+			tableName,
 			nil,
 			preValues,
 			nil,
@@ -339,6 +372,23 @@ func convert2RowChanges(
 	}
 	res.SetApproximateDataSize(row.ApproximateDataSize)
 	return res
+}
+
+func routerTable(tableRouter *regexprrouter.RouteTable, tableName *model.TableName) *model.TableName {
+	if tableRouter != nil {
+		schema, table, err := tableRouter.Route(tableName.Schema, tableName.Table)
+		if err != nil {
+			panic("route table failed")
+		}
+		tableName = &model.TableName{
+			Schema:      schema,
+			Table:       table,
+			IsPartition: tableName.IsPartition,
+			TableID:     tableName.TableID,
+		}
+		// todo: update the tableInfo
+	}
+	return tableName
 }
 
 func convertBinaryToString(cols []*model.Column) {
@@ -376,7 +426,7 @@ func (s *mysqlBackend) groupRowsByType(
 		if row.IsInsert() {
 			insertRow = append(
 				insertRow,
-				convert2RowChanges(row, tableInfo, sqlmodel.RowChangeInsert))
+				convert2RowChanges(row, tableInfo, sqlmodel.RowChangeInsert, s.tableRouter))
 			if len(insertRow) >= s.cfg.MaxTxnRow {
 				insertRows = append(insertRows, insertRow)
 				insertRow = make([]*sqlmodel.RowChange, 0, preAllocateSize)
@@ -386,7 +436,7 @@ func (s *mysqlBackend) groupRowsByType(
 		if row.IsDelete() {
 			deleteRow = append(
 				deleteRow,
-				convert2RowChanges(row, tableInfo, sqlmodel.RowChangeDelete))
+				convert2RowChanges(row, tableInfo, sqlmodel.RowChangeDelete, s.tableRouter))
 			if len(deleteRow) >= s.cfg.MaxTxnRow {
 				deleteRows = append(deleteRows, deleteRow)
 				deleteRow = make([]*sqlmodel.RowChange, 0, preAllocateSize)
@@ -397,14 +447,14 @@ func (s *mysqlBackend) groupRowsByType(
 			if spiltUpdate {
 				deleteRow = append(
 					deleteRow,
-					convert2RowChanges(row, tableInfo, sqlmodel.RowChangeDelete))
+					convert2RowChanges(row, tableInfo, sqlmodel.RowChangeDelete, s.tableRouter))
 				if len(deleteRow) >= s.cfg.MaxTxnRow {
 					deleteRows = append(deleteRows, deleteRow)
 					deleteRow = make([]*sqlmodel.RowChange, 0, preAllocateSize)
 				}
 				insertRow = append(
 					insertRow,
-					convert2RowChanges(row, tableInfo, sqlmodel.RowChangeInsert))
+					convert2RowChanges(row, tableInfo, sqlmodel.RowChangeInsert, s.tableRouter))
 				if len(insertRow) >= s.cfg.MaxTxnRow {
 					insertRows = append(insertRows, insertRow)
 					insertRow = make([]*sqlmodel.RowChange, 0, preAllocateSize)
@@ -412,7 +462,7 @@ func (s *mysqlBackend) groupRowsByType(
 			} else {
 				updateRow = append(
 					updateRow,
-					convert2RowChanges(row, tableInfo, sqlmodel.RowChangeUpdate))
+					convert2RowChanges(row, tableInfo, sqlmodel.RowChangeUpdate, s.tableRouter))
 				if len(updateRow) >= s.cfg.MaxMultiUpdateRowCount {
 					updateRows = append(updateRows, updateRow)
 					updateRow = make([]*sqlmodel.RowChange, 0, preAllocateSize)
@@ -589,8 +639,24 @@ func (s *mysqlBackend) prepareDMLs() *preparedDMLs {
 			}
 		}
 
-		quoteTable := firstRow.TableInfo.TableName.QuoteString()
+		tableName := routerTable(s.tableRouter, &firstRow.TableInfo.TableName)
+		quoteTable := tableName.QuoteString()
 		for _, row := range event.Event.Rows {
+			if s.tableRouter != nil {
+				cols, vals := s.tableRouter.FetchExtendColumn(tableName.Schema, tableName.Table, "cdc")
+				if len(cols) > 0 {
+					for _, col := range cols {
+						row.Columns = append(row.Columns, &model.Column{
+							Name: col,
+						})
+					}
+					extVals := make([]interface{}, 0, len(vals))
+					for _, v := range vals {
+						extVals = append(extVals, v)
+					}
+					values = append(values, extVals)
+				}
+			}
 			var query string
 			var args []interface{}
 			// If the old value is enabled, is not in safe mode and is an update event, then translate to UPDATE.
