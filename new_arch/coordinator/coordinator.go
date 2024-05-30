@@ -11,32 +11,62 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package new_arch
+package coordinator
 
 import (
 	"context"
 	"github.com/pingcap/tiflow/cdc/model"
+	"github.com/pingcap/tiflow/cdc/owner"
+	"github.com/pingcap/tiflow/cdc/scheduler"
+	"github.com/pingcap/tiflow/cdc/vars"
+	"github.com/pingcap/tiflow/new_arch"
+	"github.com/pingcap/tiflow/pkg/config"
+	"github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/orchestrator"
-	"go.uber.org/atomic"
+	"github.com/pingcap/tiflow/pkg/upstream"
+	"io"
 )
 
 type coordinatorImpl struct {
-	changefeeds map[model.ChangeFeedID]*changefeed
+	changefeeds     map[model.ChangeFeedID]*changefeed
+	upstreamManager *upstream.Manager
+	cfg             *config.SchedulerConfig
+	globalVars      *vars.GlobalVars
 }
 
-func newCoordinatorImpl() *coordinatorImpl {
-	return &coordinatorImpl{}
+func NewCoordinator(
+	upstreamManager *upstream.Manager,
+	cfg *config.SchedulerConfig,
+	globalVars *vars.GlobalVars,
+) owner.Owner {
+	c := &coordinatorImpl{
+		upstreamManager: upstreamManager,
+		cfg:             cfg,
+		globalVars:      globalVars,
+		changefeeds:     make(map[model.ChangeFeedID]*changefeed),
+	}
+	_, _ = globalVars.MessageServer.SyncAddHandler(context.Background(), new_arch.GetCoordinatorTopic(),
+		&new_arch.Message{}, func(sender string, messageI interface{}) error {
+			message := messageI.(*new_arch.Message)
+			c.HandleMessage(sender, message)
+			return nil
+		})
+	return c
 }
 
-type changefeed struct {
-	maintainerCaptureID model.CaptureID
-	ID                  model.ChangeFeedID
-	Info                *model.ChangeFeedInfo
-	Status              *model.ChangeFeedStatus
+func (c *coordinatorImpl) HandleMessage(send string, msg *new_arch.Message) {
+	if msg.AddMaintainerResponse != nil {
+		rsp := msg.AddMaintainerResponse
+		if rsp.Status == maintainerStatusRunning {
+			c.changefeeds[model.DefaultChangeFeedID(rsp.ID)].maintainerStatus = maintainerStatusRunning
+		}
+	}
+}
 
-	state        model.FeedState
-	checkpointTs atomic.Uint64
-	errors       map[model.CaptureID]changefeedError
+func (c *coordinatorImpl) SendMessage(ctx context.Context, capture string, topic string, m *new_arch.Message) error {
+	client := c.globalVars.MessageRouter.GetClient(capture)
+	_, err := client.TrySendMessage(ctx, topic, m)
+	return errors.Trace(err)
 }
 
 type changefeedError struct {
@@ -44,33 +74,8 @@ type changefeedError struct {
 	failErr *model.RunningError
 }
 
-func newChangefeed(captureID model.CaptureID, id model.ChangeFeedID,
-	info *model.ChangeFeedInfo,
-	status *model.ChangeFeedStatus) *changefeed {
-	return &changefeed{
-		maintainerCaptureID: captureID,
-		ID:                  id,
-		Info:                info,
-		Status:              status,
-	}
-}
-
-func (c *changefeed) Run(ctx context.Context) error {
-	return nil
-}
-
-func (c *changefeed) Stop(ctx context.Context) error {
-	return nil
-}
-func (c *changefeed) GetCheckpointTs(ctx context.Context) uint64 {
-	return c.checkpointTs.Load()
-}
-
-func (c *changefeed) EmitCheckpointTs(ctx context.Context, uint642 uint64) error {
-	return nil
-}
-
-func (c *coordinatorImpl) Tick(ctx context.Context, state *orchestrator.GlobalReactorState) (nextState orchestrator.ReactorState, err error) {
+func (c *coordinatorImpl) Tick(ctx context.Context, rawState orchestrator.ReactorState) (nextState orchestrator.ReactorState, err error) {
+	state := rawState.(*orchestrator.GlobalReactorState)
 	// update gc safe point
 	//if err = c.updateGCSafepoint(ctx, state); err != nil {
 	//	return nil, errors.Trace(err)
@@ -178,10 +183,52 @@ func (c *coordinatorImpl) ScheduleChangefeedMaintainer(ctx context.Context,
 	for changefeedID := range newChangefeeds {
 		cf := state.Changefeeds[changefeedID]
 		//todo: select a capture to schedule maintainer
-		impl := newChangefeed(captures[idx%len(captures)].ID, cf.ID, cf.Info, cf.Status)
+		impl := newChangefeed(captures[idx%len(captures)].ID, cf.ID, cf.Info, cf.Status, c)
 		c.changefeeds[cf.ID] = impl
 		go impl.Run(ctx)
 		idx++
 	}
+	return nil
+}
+
+func (c *coordinatorImpl) EnqueueJob(adminJob model.AdminJob, done chan<- error) {
+
+}
+func (c *coordinatorImpl) RebalanceTables(cfID model.ChangeFeedID, done chan<- error) {
+
+}
+
+func (c *coordinatorImpl) ScheduleTable(
+	cfID model.ChangeFeedID, toCapture model.CaptureID,
+	tableID model.TableID, done chan<- error,
+) {
+
+}
+func (c *coordinatorImpl) DrainCapture(query *scheduler.Query, done chan<- error) {
+
+}
+func (c *coordinatorImpl) WriteDebugInfo(w io.Writer, done chan<- error) {
+
+}
+func (c *coordinatorImpl) Query(query *owner.Query, done chan<- error) {
+
+}
+func (c *coordinatorImpl) AsyncStop() {
+
+}
+func (c *coordinatorImpl) UpdateChangefeedAndUpstream(ctx context.Context,
+	upstreamInfo *model.UpstreamInfo,
+	changeFeedInfo *model.ChangeFeedInfo,
+) error {
+	return nil
+}
+func (c *coordinatorImpl) UpdateChangefeed(ctx context.Context,
+	changeFeedInfo *model.ChangeFeedInfo) error {
+	return nil
+}
+func (c *coordinatorImpl) CreateChangefeed(context.Context,
+	*model.UpstreamInfo,
+	*model.ChangeFeedInfo,
+) error {
 	return nil
 }

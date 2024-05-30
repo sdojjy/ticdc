@@ -15,6 +15,7 @@ package new_arch
 
 import (
 	"context"
+	"fmt"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/processor/tablepb"
 	"github.com/pingcap/tiflow/pkg/config"
@@ -68,4 +69,24 @@ type Querer interface {
 	ListProcessors(ctx context.Context) ([]model.ProcessorDetail, error)
 	ListCaptures(ctx context.Context) ([]model.ProcessorDetail, error)
 	IsHealthy(ctx context.Context) bool
+}
+
+func GetCoordinatorTopic() string {
+	return "coordinator"
+}
+
+func GetChangefeedMaintainerManagerTopic() string {
+	return "changefeedMaintainerManager"
+}
+
+func GetChangefeedMaintainerTopic(ID model.ChangeFeedID) string {
+	return fmt.Sprintf("changefeedMaintainer/%s/%s", ID.Namespace, ID.ID)
+}
+
+func GetTableRangeMaintainerManagerTopic() string {
+	return "tableRangeMaintainerManager"
+}
+
+func GetTableRangeMaintainerTopic(ID model.ChangeFeedID) string {
+	return fmt.Sprintf("tableRangeMaintainer/%s/%s", ID.Namespace, ID.ID)
 }
