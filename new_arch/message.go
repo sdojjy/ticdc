@@ -16,6 +16,7 @@ package new_arch
 import "github.com/pingcap/tiflow/cdc/model"
 
 type Message struct {
+	MasterVersion           string                   `yaml:"master_version"`
 	AddMaintainerRequest    *AddMaintainerRequest    `json:"add_maintainer_request"`
 	AddMaintainerResponse   *AddMaintainerResponse   `json:"add_maintainer_response"`
 	RemoveMaintainerRequest *RemoveMaintainerRequest `json:"remove_maintainer_request"`
