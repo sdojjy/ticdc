@@ -15,8 +15,12 @@ package heartbeat
 
 import (
 	"context"
+	"fmt"
 	"github.com/pingcap/tiflow/cdc/model"
+	"github.com/pingcap/tiflow/new_arch"
+	"github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/p2p"
+	"time"
 )
 
 // 1. 组件启动的时候需要通知所有的 capture 一次 . 告诉子组件有新的 master 产生了， 让他们更改 master 地址 ，收集信息
@@ -26,7 +30,7 @@ type AliveDetectionServer struct {
 	messageServer *p2p.MessageServer
 	messageRouter p2p.MessageRouter
 
-	SubComponents []Component
+	SubComponents []ComponentMaintainer
 }
 
 func NewAliveDetectionServer(ctx context.Context,
@@ -38,13 +42,20 @@ func NewAliveDetectionServer(ctx context.Context,
 	}
 }
 
-type Component struct {
+type ComponentMaintainer struct {
+	// MessageServer and MessageRouter are for peer-messaging
+	messageServer *p2p.MessageServer
+	messageRouter p2p.MessageRouter
+
 	// 组件的版本
 	version int
 	// 父组件的版本，收到消息后需要检查
 	parentVersion int
 	// 子组件
-	subcomponent []Component
+	subcomponent map[model.CaptureID]*SubComponent
+	name         string
+
+	captureInfo map[model.CaptureID]*model.CaptureInfo
 
 	// 组件的状态
 	// starting, 正在启动，不能工作
@@ -54,22 +65,63 @@ type Component struct {
 	state int
 }
 
-func (c *Component) Bootstrap() error {
+type SubComponent struct {
+	lastHeartbeatTime time.Time
+}
+
+func (c *ComponentMaintainer) Bootstrap() error {
 	return nil
 }
 
-// 是否子组件，如果没有子组件是不需要通知所有结点的
-func (c *Component) HasSubComponent() bool {
-	return false
+func (c *ComponentMaintainer) Name() string {
+	return c.name
+}
+
+func (c *ComponentMaintainer) Version() int {
+	return c.version
+}
+
+func (c *ComponentMaintainer) GetMasterComponentBootstrapTopic() string {
+	return fmt.Sprintf("bootstrap/%s/master", c.name)
+}
+
+func (c *ComponentMaintainer) GetCaptureComponentManagerBootstrapTopic() string {
+	return fmt.Sprintf("bootstrap/%s/manager", c.name)
 }
 
 // 向所有的节点都发送一个 heartbeat 事件，收集所有的子组件
-func (c *Component) Broadcast(capture []model.Capture) {
-	for _, capture := range capture {
+func (c *ComponentMaintainer) Broadcast(ctx context.Context, captures []model.Capture) error {
+	for _, capture := range captures {
 		// 发送信息到 capture
+		client := c.messageRouter.GetClient(capture.ID)
+		_, err := client.TrySendMessage(ctx, c.GetMasterComponentBootstrapTopic(),
+			new_arch.Message{BootstrapRequest: &new_arch.BootstrapRequest{}})
+		if err != nil {
+			return errors.Trace(err)
+		}
 	}
+	return nil
 }
 
-func (c *Component) OnCaptureChanged() int {
+func (c *ComponentMaintainer) RegisterComponent(captureID model.Capture, component *SubComponent) {
 
+}
+
+// UpdateCaptureInfo update the latest alive capture info.
+// Returns true if capture info has changed.
+func (c *ComponentMaintainer) UpdateCaptureInfo(
+	aliveCaptures map[model.CaptureID]*model.CaptureInfo,
+) bool {
+	if len(aliveCaptures) != len(c.captureInfo) {
+		c.captureInfo = aliveCaptures
+		return true
+	}
+	for id, alive := range aliveCaptures {
+		info, ok := c.captureInfo[id]
+		if !ok || info.Version != alive.Version {
+			c.captureInfo = aliveCaptures
+			return true
+		}
+	}
+	return false
 }

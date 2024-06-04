@@ -16,35 +16,44 @@ package new_arch
 import "github.com/pingcap/tiflow/cdc/model"
 
 type Message struct {
-	MasterVersion           string                   `yaml:"master_version"`
-	AddMaintainerRequest    *AddMaintainerRequest    `json:"add_maintainer_request"`
-	AddMaintainerResponse   *AddMaintainerResponse   `json:"add_maintainer_response"`
-	RemoveMaintainerRequest *RemoveMaintainerRequest `json:"remove_maintainer_request"`
+	MasterVersion           string                   `json:"master_version,omitempty"`
+	AddMaintainerRequest    *AddMaintainerRequest    `json:"add_maintainer_request,omitempty"`
+	AddMaintainerResponse   *AddMaintainerResponse   `json:"add_maintainer_response,omitempty"`
+	RemoveMaintainerRequest *RemoveMaintainerRequest `json:"remove_maintainer_request,omitempty"`
 
-	AddTableRangeMaintainerRequest  *AddTableRangeMaintainerRequest  `json:"add_table_range_maintainer_request"`
-	AddTableRangeMaintainerResponse *AddTableRangeMaintainerResponse `json:"add_table_range_maintainer_response"`
+	AddTableRangeMaintainerRequest  *AddTableRangeMaintainerRequest  `json:"add_table_range_maintainer_request,omitempty"`
+	AddTableRangeMaintainerResponse *AddTableRangeMaintainerResponse `json:"add_table_range_maintainer_response,omitempty"`
+
+	BootstrapRequest  *BootstrapRequest  `json:"bootstrap_request,omitempty"`
+	BootstrapResponse *BootstrapResponse `json:"bootstrap_response,omitempty"`
+}
+
+type BootstrapRequest struct {
+}
+
+type BootstrapResponse struct {
 }
 
 type AddTableRangeMaintainerRequest struct {
-	Tables []model.TableID         `json:"tables"`
-	Config *model.ChangeFeedInfo   `json:"config"`
-	Status *model.ChangeFeedStatus `json:"status"`
+	Tables []model.TableID         `json:"tables,omitempty"`
+	Config *model.ChangeFeedInfo   `json:"config,omitempty"`
+	Status *model.ChangeFeedStatus `json:"status,omitempty"`
 }
 
 type AddTableRangeMaintainerResponse struct {
-	Status string `json:"status"`
-	ID     string `json:"id"`
+	Status string `json:"status,omitempty"`
+	ID     string `json:"id,omitempty"`
 }
 
 type AddMaintainerRequest struct {
-	Config *model.ChangeFeedInfo   `json:"config"`
-	Status *model.ChangeFeedStatus `json:"status"`
+	Config *model.ChangeFeedInfo   `json:"config,omitempty"`
+	Status *model.ChangeFeedStatus `json:"status,omitempty"`
 }
 
 type AddMaintainerResponse struct {
-	Status string `json:"status"`
-	ID     string `json:"id"`
+	Status string `json:"status,omitempty"`
+	ID     string `json:"id,omitempty"`
 }
 type RemoveMaintainerRequest struct {
-	ID string `json:"id"`
+	ID string `json:"id,omitempty"`
 }

@@ -194,6 +194,7 @@ func (c *coordinatorImpl) ScheduleChangefeedMaintainer(ctx context.Context,
 func (c *coordinatorImpl) EnqueueJob(adminJob model.AdminJob, done chan<- error) {
 
 }
+
 func (c *coordinatorImpl) RebalanceTables(cfID model.ChangeFeedID, done chan<- error) {
 
 }
