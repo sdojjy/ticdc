@@ -32,6 +32,8 @@ type ChangefeedManager struct {
 func NewChangefeedManager(maxTaskConcurrency int) *ChangefeedManager {
 	m := &ChangefeedManager{
 		maxTaskConcurrency: maxTaskConcurrency,
+		changefeeds:        make(map[model.ChangeFeedID]*changefeed),
+		runningTasks:       make(map[model.ChangeFeedID]*ScheduleTask),
 	}
 	return m
 }
@@ -211,10 +213,10 @@ func (r *ChangefeedManager) handleAddTableTask(
 ) ([]*new_arch.Message, error) {
 	table, ok := r.changefeeds[task.Changefeed]
 	if !ok {
-		r.changefeeds[task.Changefeed] = &changefeed{
+		table = &changefeed{
 			maintainerCaptureID: task.CaptureID,
 			standbyCaptureID:    "",
-			Captures:            nil,
+			Captures:            make(map[model.CaptureID]Role),
 			ID:                  task.Changefeed,
 			Info:                nil,
 			Status:              nil,
@@ -224,6 +226,7 @@ func (r *ChangefeedManager) handleAddTableTask(
 			coordinator:         nil,
 			scheduleState:       0,
 		}
+		r.changefeeds[task.Changefeed] = table
 	}
 	return table.handleAddTable(task.CaptureID)
 }

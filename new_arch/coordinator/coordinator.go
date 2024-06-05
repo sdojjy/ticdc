@@ -210,11 +210,19 @@ func (c *coordinatorImpl) ScheduleChangefeedMaintainer(ctx context.Context,
 	for _, cf := range state.Changefeeds {
 		changefeeds = append(changefeeds, *cf.Info)
 	}
-	c.schedulerManager.Schedule(
+	tasks := c.schedulerManager.Schedule(
 		changefeeds,
 		c.captureManager.Captures,
 		c.changefeedManager.changefeeds,
 		c.changefeedManager.runningTasks)
+
+	messages, err := c.changefeedManager.HandleTasks(tasks)
+	if err != nil {
+		return errors.Trace(err)
+	}
+	if messages != nil {
+
+	}
 
 	//idx := 0
 	//for changefeedID := range newChangefeeds {

@@ -18,6 +18,7 @@ import (
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/pkg/config"
 	"go.uber.org/zap"
+	"time"
 )
 
 // Manager manages schedulers and generates schedule tasks.
@@ -32,7 +33,7 @@ type Manager struct { //nolint:revive
 func NewSchedulerManager(cfg *config.SchedulerConfig) *Manager {
 	sm := &Manager{
 		maxTaskConcurrency: cfg.MaxTaskConcurrency,
-		schedulers:         make([]Scheduler, 1),
+		schedulers:         make([]Scheduler, schedulerPriorityMax),
 		tasksCounter: make(map[struct {
 			scheduler string
 			task      string
@@ -41,7 +42,12 @@ func NewSchedulerManager(cfg *config.SchedulerConfig) *Manager {
 
 	sm.schedulers[schedulerPriorityBasic] = newBasicScheduler(
 		cfg.AddTableBatchSize)
-	//sm.schedulers[schedulerPriorityMoveTable] = newMoveTableScheduler()
+	sm.schedulers[schedulerPriorityDrainCapture] = newDrainCaptureScheduler(
+		cfg.MaxTaskConcurrency)
+	sm.schedulers[schedulerPriorityBalance] = newBalanceScheduler(
+		time.Duration(cfg.CheckBalanceInterval), cfg.MaxTaskConcurrency)
+	sm.schedulers[schedulerPriorityMoveTable] = newMoveTableScheduler()
+	sm.schedulers[schedulerPriorityRebalance] = newRebalanceScheduler()
 	return sm
 }
 

@@ -167,18 +167,103 @@ func (c *changefeed) handleRemoveChangefeed() ([]*new_arch.Message, error) {
 		zap.Any("old", oldState))
 	status := ChangefeedStatus{
 		ChangefeedID:             c.ID,
-		SchedulerComponentStatus: "replicating",
+		SchedulerComponentStatus: scheduller.ComponentStatusWorking,
 	}
 	return c.poll(&status, c.maintainerCaptureID)
 }
 
 func (c *changefeed) pollOnAbsent(
 	input *ChangefeedStatus, captureID model.CaptureID) (bool, error) {
+	switch input.SchedulerComponentStatus {
+	case scheduller.ComponentStatusAbsent:
+		c.scheduleState = scheduller.SchedulerComponentStatusPrepare
+		err := c.setCapture(captureID, RoleSecondary)
+		return true, errors.Trace(err)
+
+	case scheduller.ComponentStatusStopped:
+		// Ignore stopped table state as a capture may shutdown unexpectedly.
+		return false, nil
+	case scheduller.ComponentStatusPreparing,
+		scheduller.ComponentStatusPrepared,
+		scheduller.ComponentStatusWorking,
+		scheduller.ComponentStatusStopping:
+	}
+	log.Warn("schedulerv3: ignore input, unexpected replication set state",
+		zap.String("changefeed", c.ID.ID),
+		zap.String("captureID", captureID))
 	return false, nil
 }
 
+func (r *changefeed) isInRole(captureID model.CaptureID, role Role) bool {
+	rc, ok := r.Captures[captureID]
+	if !ok {
+		return false
+	}
+	return rc == role
+}
 func (c *changefeed) pollOnPrepare(
 	input *ChangefeedStatus, captureID model.CaptureID) (*new_arch.Message, bool, error) {
+	switch input.SchedulerComponentStatus {
+	case scheduller.ComponentStatusAbsent:
+		if c.isInRole(captureID, RoleSecondary) {
+			return &new_arch.Message{
+				To:                   captureID,
+				AddMaintainerRequest: &new_arch.AddMaintainerRequest{},
+			}, false, nil
+		}
+	case scheduller.ComponentStatusPreparing:
+		if c.isInRole(captureID, RoleSecondary) {
+			// Ignore secondary Preparing, it may take a long time.
+			return nil, false, nil
+		}
+	case scheduller.ComponentStatusPrepared:
+		if c.isInRole(captureID, RoleSecondary) {
+			// Secondary is prepared, transit to Commit state.
+			c.scheduleState = scheduller.SchedulerComponentStatusCommit
+			return nil, true, nil
+		}
+	case scheduller.ComponentStatusWorking:
+		if c.maintainerCaptureID == captureID {
+			//r.updateCheckpointAndStats(input.Checkpoint, input.Stats)
+			return nil, false, nil
+		}
+	case scheduller.ComponentStatusStopping, scheduller.ComponentStatusStopped:
+		if c.maintainerCaptureID == captureID {
+			// Primary is stopped, but we may still has secondary.
+			// Clear primary and promote secondary when it's prepared.
+			log.Info("schedulerv3: primary is stopped during Prepare",
+				zap.String("changefeed", c.ID.ID),
+				zap.Any("tableState", input),
+				zap.String("captureID", captureID))
+			//r.clearPrimary()
+			return nil, false, nil
+		}
+		if c.isInRole(captureID, RoleSecondary) {
+			log.Info("schedulerv3: capture is stopped during Prepare",
+				zap.String("changefeed", c.ID.ID),
+				zap.Any("tableState", input),
+				zap.String("captureID", captureID))
+			//err := c.clearCapture(captureID, RoleSecondary)
+			//if err != nil {
+			//	return nil, false, errors.Trace(err)
+			//}
+			//if r.Primary != "" {
+			//	// Secondary is stopped, and we still has primary.
+			//	// Transit to Replicating.
+			//	r.State = ReplicationSetStateReplicating
+			//} else {
+			//	// Secondary is stopped, and we do not has primary.
+			//	// Transit to Absent.
+			//	r.State = ReplicationSetStateAbsent
+			//}
+			return nil, true, nil
+		}
+	}
+	log.Warn("schedulerv3: ignore input, unexpected replication set state",
+		zap.String("changefeed", c.ID.ID),
+		zap.Any("tableState", input),
+		zap.String("captureID", captureID),
+		zap.Any("replicationSet", c))
 	return nil, false, nil
 }
 
@@ -198,7 +283,7 @@ func (c *changefeed) pollOnRemoving(
 }
 
 type ChangefeedStatus struct {
-	SchedulerComponentStatus string
+	SchedulerComponentStatus scheduller.ComponentStatus
 	ChangefeedID             model.ChangeFeedID
 }
 
@@ -282,7 +367,7 @@ func (r *changefeed) handleMoveTable(
 		zap.Any("replicationSet", r))
 	status := ChangefeedStatus{
 		ChangefeedID:             r.ID,
-		SchedulerComponentStatus: "TableStateAbsent",
+		SchedulerComponentStatus: scheduller.ComponentStatusAbsent,
 	}
 	return r.poll(&status, dest)
 }
@@ -303,7 +388,7 @@ func (r *changefeed) handleAddTable(
 	}
 	status := ChangefeedStatus{
 		ChangefeedID:             r.ID,
-		SchedulerComponentStatus: "TableStateAbsent",
+		SchedulerComponentStatus: scheduller.ComponentStatusAbsent,
 	}
 	msgs, err := r.poll(&status, captureID)
 	if err != nil {
@@ -336,7 +421,7 @@ func (r *changefeed) handleRemoveTable() ([]*new_arch.Message, error) {
 		zap.Any("replicationSet", r))
 	status := ChangefeedStatus{
 		ChangefeedID:             r.ID,
-		SchedulerComponentStatus: "TableStateReplicating",
+		SchedulerComponentStatus: scheduller.ComponentStatusWorking,
 	}
 	return r.poll(&status, r.maintainerCaptureID)
 }
@@ -350,4 +435,44 @@ func (r *changefeed) setCapture(captureID model.CaptureID, role Role) error {
 	}
 	r.Captures[captureID] = role
 	return nil
+}
+
+// SetHeap is a max-heap, it implements heap.Interface.
+type SetHeap []*changefeed
+
+// NewReplicationSetHeap creates a new SetHeap.
+func NewReplicationSetHeap(capacity int) SetHeap {
+	if capacity <= 0 {
+		panic("capacity must be positive")
+	}
+	return make(SetHeap, 0, capacity)
+}
+
+// Len returns the length of the heap.
+func (h SetHeap) Len() int { return len(h) }
+
+// Less returns true if the element at i is less than the element at j.
+func (h SetHeap) Less(i, j int) bool {
+	if h[i].ID.ID > h[j].ID.ID {
+		return true
+	}
+	return false
+}
+
+// Swap swaps the elements with indexes i and j.
+func (h SetHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
+
+// Push pushes an element to the heap.
+func (h *SetHeap) Push(x interface{}) {
+	*h = append(*h, x.(*changefeed))
+}
+
+// Pop pops an element from the heap.
+func (h *SetHeap) Pop() interface{} {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	old[n-1] = nil
+	*h = old[0 : n-1]
+	return x
 }

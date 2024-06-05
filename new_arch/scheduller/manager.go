@@ -18,13 +18,15 @@ import (
 )
 
 // ComponentStatus is the state in component side
-// Absent -> Working -> Stopping -> Stopped
+// Absent -> Preparing -> Prepared -> Working -> Stopping -> Stopped
 // todo: define it in pb file
 type ComponentStatus int
 
 const (
 	ComponentStatusUnknown ComponentStatus = iota
 	ComponentStatusAbsent
+	ComponentStatusPreparing
+	ComponentStatusPrepared
 	ComponentStatusWorking
 	ComponentStatusStopping
 	ComponentStatusStopped
