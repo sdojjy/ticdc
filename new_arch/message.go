@@ -16,7 +16,10 @@ package new_arch
 import "github.com/pingcap/tiflow/cdc/model"
 
 type Message struct {
-	MasterVersion           string                   `json:"master_version,omitempty"`
+	MasterVersion int64  `json:"master_version,omitempty"`
+	Sender        string `json:"sender,omitempty"`
+	To            string `json:"to,omitempty"`
+
 	AddMaintainerRequest    *AddMaintainerRequest    `json:"add_maintainer_request,omitempty"`
 	AddMaintainerResponse   *AddMaintainerResponse   `json:"add_maintainer_response,omitempty"`
 	RemoveMaintainerRequest *RemoveMaintainerRequest `json:"remove_maintainer_request,omitempty"`
@@ -26,6 +29,16 @@ type Message struct {
 
 	BootstrapRequest  *BootstrapRequest  `json:"bootstrap_request,omitempty"`
 	BootstrapResponse *BootstrapResponse `json:"bootstrap_response,omitempty"`
+
+	DispatchComponentRequest *DispatchComponentRequest `json:"msg_dispatch_component_request,omitempty"`
+
+	ChangefeedHeartbeatRequest  *ChangefeedHeartbeatRequest  `json:"changefeed_heartbeat_request,omitempty"`
+	ChangefeedHeartbeatResponse *ChangefeedHeartbeatResponse `json:"changefeed_heartbeat_response,omitempty"`
+}
+
+type DispatchComponentRequest struct {
+	AddComponent    []byte `json:"add_component,omitempty"`
+	RemoveComponent []byte `json:"remove_component,omitempty"`
 }
 
 type BootstrapRequest struct {
@@ -56,4 +69,18 @@ type AddMaintainerResponse struct {
 }
 type RemoveMaintainerRequest struct {
 	ID string `json:"id,omitempty"`
+}
+
+type ChangefeedHeartbeatRequest struct {
+	LivenessTimestamp int64 `json:"liveness_time,omitempty"`
+}
+
+type ChangefeedHeartbeatResponse struct {
+	From        string              `json:"from,omitempty"`
+	Liveness    int32               `json:"liveness,omitempty"`
+	Changefeeds []*ChangefeedStatus `json:"changefeeds,omitempty"`
+}
+
+type ChangefeedStatus struct {
+	ID model.ChangeFeedID `json:"id,omitempty"`
 }

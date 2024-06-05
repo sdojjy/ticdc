@@ -35,6 +35,8 @@ type SchedulerComponentStatus int
 
 const (
 	SchedulerComponentStatusAbsent SchedulerComponentStatus = iota
+	SchedulerComponentStatusPrepare
+	SchedulerComponentStatusCommit
 	SchedulerComponentStatusWorking
 	SchedulerComponentStatusMoving
 	SchedulerComponentStatusRemoving

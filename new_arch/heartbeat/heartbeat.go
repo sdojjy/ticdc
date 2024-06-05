@@ -65,11 +65,36 @@ type ComponentMaintainer struct {
 	state int
 }
 
+const (
+	stateStarting     = 0
+	stateRunning      = 1
+	stateStopping     = 2
+	stateDisconnected = 3
+)
+
+func NewComponentMaintainer(ctx context.Context,
+	messageServer *p2p.MessageServer,
+	messageRouter p2p.MessageRouter,
+	name string) *ComponentMaintainer {
+	c := &ComponentMaintainer{
+		messageServer: messageServer,
+		messageRouter: messageRouter,
+		name:          name,
+		state:         1,
+		subcomponent:  make(map[model.CaptureID]*SubComponent),
+		captureInfo:   make(map[model.CaptureID]*model.CaptureInfo),
+	}
+	return c
+}
+
 type SubComponent struct {
 	lastHeartbeatTime time.Time
 }
 
 func (c *ComponentMaintainer) Bootstrap() error {
+	// 1. 向所有的 alive capture 发送 bootstrap 消息，直到所有的都回复了
+	// 2. 变成可用前处理 新的capture 上线，新上线的 capture 也要回复
+	// 3. 处理下线的 capture, capture 下线直接删掉
 	return nil
 }
 
@@ -103,7 +128,7 @@ func (c *ComponentMaintainer) Broadcast(ctx context.Context, captures []model.Ca
 	return nil
 }
 
-func (c *ComponentMaintainer) RegisterComponent(captureID model.Capture, component *SubComponent) {
+func (c *ComponentMaintainer) GetActiveSubComponents(captureID model.Capture, component *SubComponent) {
 
 }
 

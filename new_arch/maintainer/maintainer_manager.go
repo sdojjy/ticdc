@@ -23,12 +23,18 @@ import (
 	"github.com/pingcap/tiflow/pkg/upstream"
 )
 
+// MaintainerManager runs on every capture, receive command from coordinator
 type MaintainerManager struct {
 	maintainers map[string]*Maintainer
 
 	upstreamManager *upstream.Manager
 	cfg             *config.SchedulerConfig
 	globalVars      *vars.GlobalVars
+
+	masterID      string
+	masterVersion int64
+
+	selfCaptureID model.CaptureID
 }
 
 func NewMaintainerManager(upstreamManager *upstream.Manager,
@@ -39,6 +45,7 @@ func NewMaintainerManager(upstreamManager *upstream.Manager,
 		cfg:             cfg,
 		globalVars:      globalVars,
 		maintainers:     make(map[string]*Maintainer),
+		selfCaptureID:   globalVars.CaptureInfo.ID,
 	}
 	_, _ = m.globalVars.MessageServer.SyncAddHandler(context.Background(), new_arch.GetChangefeedMaintainerManagerTopic(),
 		&new_arch.Message{}, func(sender string, messageI interface{}) error {
@@ -62,6 +69,24 @@ func (m *MaintainerManager) HandleMessage(send string, msg *new_arch.Message) {
 				},
 			})
 		changefeedMaintainer.ScheduleTableRangeManager(context.Background())
+	} else if msg.ChangefeedHeartbeatRequest != nil {
+		m.masterID = send
+		m.masterVersion = msg.MasterVersion
+		//todo: update master version, master client ID
+		var changefeeds []*new_arch.ChangefeedStatus
+		for ID, _ := range m.maintainers {
+			changefeeds = append(changefeeds, &new_arch.ChangefeedStatus{
+				ID: model.DefaultChangeFeedID(ID),
+			})
+		}
+		m.SendMessage(context.Background(), send, new_arch.GetCoordinatorTopic(),
+			&new_arch.Message{
+				ChangefeedHeartbeatResponse: &new_arch.ChangefeedHeartbeatResponse{
+					From:        m.selfCaptureID,
+					Liveness:    0,
+					Changefeeds: changefeeds,
+				},
+			})
 	}
 }
 

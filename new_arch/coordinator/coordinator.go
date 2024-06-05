@@ -32,6 +32,11 @@ type coordinatorImpl struct {
 	upstreamManager *upstream.Manager
 	cfg             *config.SchedulerConfig
 	globalVars      *vars.GlobalVars
+
+	captureManager    *CaptureManager
+	selfCaptureID     model.CaptureID
+	schedulerManager  *Manager
+	changefeedManager *ChangefeedManager
 }
 
 func NewCoordinator(
@@ -40,10 +45,13 @@ func NewCoordinator(
 	globalVars *vars.GlobalVars,
 ) owner.Owner {
 	c := &coordinatorImpl{
-		upstreamManager: upstreamManager,
-		cfg:             cfg,
-		globalVars:      globalVars,
-		changefeeds:     make(map[model.ChangeFeedID]*changefeed),
+		upstreamManager:   upstreamManager,
+		cfg:               cfg,
+		globalVars:        globalVars,
+		changefeeds:       make(map[model.ChangeFeedID]*changefeed),
+		selfCaptureID:     globalVars.CaptureInfo.ID,
+		schedulerManager:  NewSchedulerManager(cfg),
+		changefeedManager: NewChangefeedManager(cfg.MaxTaskConcurrency),
 	}
 	_, _ = globalVars.MessageServer.SyncAddHandler(context.Background(), new_arch.GetCoordinatorTopic(),
 		&new_arch.Message{}, func(sender string, messageI interface{}) error {
@@ -51,6 +59,7 @@ func NewCoordinator(
 			c.HandleMessage(sender, message)
 			return nil
 		})
+	c.captureManager = NewCaptureManager(c.selfCaptureID, globalVars.OwnerRevision)
 	return c
 }
 
@@ -60,6 +69,10 @@ func (c *coordinatorImpl) HandleMessage(send string, msg *new_arch.Message) {
 		if rsp.Status == maintainerStatusRunning {
 			c.changefeeds[model.DefaultChangeFeedID(rsp.ID)].maintainerStatus = maintainerStatusRunning
 		}
+	}
+	//todo: 和tick 是一个多线程读写处理, 使用 actor system
+	if msg.ChangefeedHeartbeatResponse != nil {
+		c.captureManager.HandleMessage([]*new_arch.ChangefeedHeartbeatResponse{msg.ChangefeedHeartbeatResponse})
 	}
 }
 
@@ -74,7 +87,8 @@ type changefeedError struct {
 	failErr *model.RunningError
 }
 
-func (c *coordinatorImpl) Tick(ctx context.Context, rawState orchestrator.ReactorState) (nextState orchestrator.ReactorState, err error) {
+func (c *coordinatorImpl) Tick(ctx context.Context,
+	rawState orchestrator.ReactorState) (nextState orchestrator.ReactorState, err error) {
 	state := rawState.(*orchestrator.GlobalReactorState)
 	// update gc safe point
 	//if err = c.updateGCSafepoint(ctx, state); err != nil {
@@ -161,9 +175,21 @@ func (c *coordinatorImpl) Tick(ctx context.Context, rawState orchestrator.Reacto
 		delete(c.changefeeds, changefeedID)
 	}
 
-	c.ScheduleChangefeedMaintainer(ctx, state, newChangefeeds)
-	//try to rebalance tables if needed
-	c.BalanceTables(ctx)
+	msgs := c.captureManager.HandleAliveCaptureUpdate(state.Captures)
+	for _, msg := range msgs {
+		client := c.globalVars.MessageRouter.GetClient(msg.To)
+		_, err := client.TrySendMessage(ctx, new_arch.GetChangefeedMaintainerManagerTopic(), msg)
+		if err != nil {
+			return nil, errors.Trace(err)
+		}
+	}
+
+	// only balance tables when all capture is replied bootstrap messages
+	if c.captureManager.CheckAllCaptureInitialized() {
+		c.ScheduleChangefeedMaintainer(ctx, state, newChangefeeds)
+		//try to rebalance tables if needed
+		c.BalanceTables(ctx)
+	}
 	return state, nil
 }
 
@@ -174,20 +200,31 @@ func (c *coordinatorImpl) BalanceTables(ctx context.Context) error {
 func (c *coordinatorImpl) ScheduleChangefeedMaintainer(ctx context.Context,
 	state *orchestrator.GlobalReactorState,
 	newChangefeeds map[model.ChangeFeedID]struct{}) error {
-	var captures []*model.CaptureInfo
-	for _, capture := range state.Captures {
-		captures = append(captures, capture)
-	}
 
-	idx := 0
-	for changefeedID := range newChangefeeds {
-		cf := state.Changefeeds[changefeedID]
-		//todo: select a capture to schedule maintainer
-		impl := newChangefeed(captures[idx%len(captures)].ID, cf.ID, cf.Info, cf.Status, c)
-		c.changefeeds[cf.ID] = impl
-		go impl.Run(ctx)
-		idx++
+	//var captures []*model.CaptureInfo
+	//for _, capture := range state.Captures {
+	//	captures = append(captures, capture)
+	//}
+
+	var changefeeds []model.ChangeFeedInfo
+	for _, cf := range state.Changefeeds {
+		changefeeds = append(changefeeds, *cf.Info)
 	}
+	c.schedulerManager.Schedule(
+		changefeeds,
+		c.captureManager.Captures,
+		c.changefeedManager.changefeeds,
+		c.changefeedManager.runningTasks)
+
+	//idx := 0
+	//for changefeedID := range newChangefeeds {
+	//	cf := state.Changefeeds[changefeedID]
+	//	//todo: select a capture to schedule maintainer
+	//	impl := newChangefeed(captures[idx%len(captures)].ID, cf.ID, cf.Info, cf.Status, c)
+	//	c.changefeeds[cf.ID] = impl
+	//	go impl.Run(ctx)
+	//	idx++
+	//}
 	return nil
 }
 
