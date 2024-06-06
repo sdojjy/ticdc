@@ -23,7 +23,6 @@ import (
 
 // Manager manages schedulers and generates schedule tasks.
 type Manager struct { //nolint:revive
-
 	schedulers         []Scheduler
 	tasksCounter       map[struct{ scheduler, task string }]int
 	maxTaskConcurrency int

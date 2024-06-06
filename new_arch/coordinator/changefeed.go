@@ -426,6 +426,30 @@ func (r *changefeed) handleRemoveTable() ([]*new_arch.Message, error) {
 	return r.poll(&status, r.maintainerCaptureID)
 }
 
+// handleCaptureShutdown handle capture shutdown event.
+// Besides returning messages and errors, it also returns a bool to indicate
+// whether r is affected by the capture shutdown.
+func (r *changefeed) handleCaptureShutdown(
+	captureID model.CaptureID,
+) ([]*new_arch.Message, bool, error) {
+	_, ok := r.Captures[captureID]
+	if !ok {
+		// r is not affected by the capture shutdown.
+		return nil, false, nil
+	}
+	// The capture has shutdown, the table has stopped.
+	status := ChangefeedStatus{
+		ChangefeedID:             r.ID,
+		SchedulerComponentStatus: scheduller.ComponentStatusStopped,
+	}
+	oldState := r.scheduleState
+	msgs, err := r.poll(&status, captureID)
+	log.Info("schedulerv3: replication state transition, capture shutdown",
+		zap.String("changefeed", r.ID.ID),
+		zap.Any("replicationSet", r),
+		zap.Any("old", oldState), zap.Any("new", r.scheduleState))
+	return msgs, true, errors.Trace(err)
+}
 func (r *changefeed) setCapture(captureID model.CaptureID, role Role) error {
 	cr, ok := r.Captures[captureID]
 	if ok && cr != role {

@@ -38,6 +38,73 @@ func NewChangefeedManager(maxTaskConcurrency int) *ChangefeedManager {
 	return m
 }
 
+// HandleCaptureChanges handles capture changes.
+func (r *ChangefeedManager) HandleCaptureChanges(
+	init map[model.CaptureID][]*ChangefeedStatus,
+	removed map[model.CaptureID][]*ChangefeedStatus,
+) ([]*new_arch.Message, error) {
+	if init != nil {
+		if len(r.changefeeds) != 0 {
+			log.Panic("schedulerv3: init again",
+				zap.Any("init", init), zap.Int("tablesCount", len(r.changefeeds)))
+		}
+		//spanStatusMap := spanz.NewBtreeMap[map[model.CaptureID]*ChangefeedStatus]()
+		//for captureID, spans := range init {
+		//	for i := range spans {
+		//		table := spans[i]
+		//		if _, ok := spanStatusMap.Get(table.Span); !ok {
+		//			spanStatusMap.ReplaceOrInsert(
+		//				table.Span, map[model.CaptureID]*ChangefeedStatus{})
+		//		}
+		//		spanStatusMap.GetV(table.Span)[captureID] = &table
+		//	}
+		//}
+		//var err error
+		//spanStatusMap.Ascend(func(span tablepb.Span, status map[string]*tablepb.TableStatus) bool {
+		//	table, err1 := NewReplicationSet(span, checkpointTs, status, r.changefeedID)
+		//	if err1 != nil {
+		//		err = errors.Trace(err1)
+		//		return false
+		//	}
+		//	r.spans.ReplaceOrInsert(table.Span, table)
+		//	return true
+		//})
+		//if err != nil {
+		//	return nil, errors.Trace(err)
+		//}
+		for _, cfs := range init {
+			for _, c := range cfs {
+				cf := &changefeed{
+					ID: c.ChangefeedID,
+				}
+				r.changefeeds[cf.ID] = cf
+			}
+		}
+	}
+	sentMsgs := make([]*new_arch.Message, 0)
+	if removed != nil {
+		var err error
+		for cfID, cf := range r.changefeeds {
+			for captureID := range removed {
+				msgs, affected, err1 := cf.handleCaptureShutdown(captureID)
+				if err != nil {
+					err = errors.Trace(err1)
+					break
+				}
+				sentMsgs = append(sentMsgs, msgs...)
+				if affected {
+					// Cleanup its running task.
+					delete(r.runningTasks, cfID)
+				}
+			}
+		}
+		if err != nil {
+			return nil, errors.Trace(err)
+		}
+	}
+	return sentMsgs, nil
+}
+
 func (r *ChangefeedManager) HandleTasks(tasks []*ScheduleTask) ([]*new_arch.Message, error) {
 	// Check if a running task is finished.
 	var toBeDeleted []model.ChangeFeedID

@@ -55,7 +55,7 @@ func (s CaptureState) String() string {
 type CaptureStatus struct {
 	OwnerRev    int64
 	State       CaptureState
-	Changefeeds []*new_arch.ChangefeedStatus
+	Changefeeds []*ChangefeedStatus
 	ID          model.CaptureID
 	Addr        string
 	IsOwner     bool
@@ -89,13 +89,17 @@ func (c *CaptureStatus) handleHeartbeatResponse(
 			zap.String("capture", c.ID),
 			zap.String("captureAddr", c.Addr))
 	}
-	c.Changefeeds = resp.Changefeeds
+	for _, cf := range resp.Changefeeds {
+		c.Changefeeds = append(c.Changefeeds, &ChangefeedStatus{
+			ChangefeedID: cf.ID,
+		})
+	}
 }
 
 // CaptureChanges wraps changes of captures.
 type CaptureChanges struct {
-	Init    map[model.CaptureID][]*new_arch.ChangefeedStatus
-	Removed map[model.CaptureID][]*new_arch.ChangefeedStatus
+	Init    map[model.CaptureID][]*ChangefeedStatus
+	Removed map[model.CaptureID][]*ChangefeedStatus
 }
 
 // CaptureManager manages capture status.
@@ -190,7 +194,7 @@ func (c *CaptureManager) HandleAliveCaptureUpdate(
 				c.changes = &CaptureChanges{}
 			}
 			if c.changes.Removed == nil {
-				c.changes.Removed = make(map[string][]*new_arch.ChangefeedStatus)
+				c.changes.Removed = make(map[string][]*ChangefeedStatus)
 			}
 			c.changes.Removed[id] = capture.Changefeeds
 		}
@@ -198,7 +202,7 @@ func (c *CaptureManager) HandleAliveCaptureUpdate(
 
 	// Check if this is the first time all captures are initialized.
 	if !c.initialized && c.checkAllCaptureInitialized() {
-		c.changes = &CaptureChanges{Init: make(map[string][]*new_arch.ChangefeedStatus)}
+		c.changes = &CaptureChanges{Init: make(map[string][]*ChangefeedStatus)}
 		for id, capture := range c.Captures {
 			c.changes.Init[id] = capture.Changefeeds
 		}

@@ -205,6 +205,9 @@ func (c *coordinatorImpl) ScheduleChangefeedMaintainer(ctx context.Context,
 	//for _, capture := range state.Captures {
 	//	captures = append(captures, capture)
 	//}
+	if changes := c.captureManager.TakeChanges(); changes != nil {
+		c.changefeedManager.HandleCaptureChanges(changes.Init, changes.Removed)
+	}
 
 	var changefeeds []model.ChangeFeedInfo
 	for _, cf := range state.Changefeeds {
