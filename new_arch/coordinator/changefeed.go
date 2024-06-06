@@ -24,7 +24,6 @@ import (
 	"github.com/pingcap/tiflow/pkg/errors"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
-	"time"
 )
 
 // Role is the role of a capture.
@@ -82,39 +81,6 @@ func newChangefeed(captureID model.CaptureID, id model.ChangeFeedID,
 		Status:              status,
 		maintainerStatus:    maintainerStatusPending,
 		coordinator:         coordinator,
-	}
-}
-
-func (c *changefeed) Run(ctx context.Context) error {
-	tick := time.NewTicker(time.Millisecond * 50)
-	loged := false
-	for {
-		select {
-		case <-ctx.Done():
-			return errors.Trace(ctx.Err())
-		case <-tick.C:
-			if c.maintainerStatus == maintainerStatusPending {
-				err := c.coordinator.SendMessage(ctx, c.maintainerCaptureID, new_arch.GetChangefeedMaintainerManagerTopic(),
-					&new_arch.Message{
-						AddMaintainerRequest: &new_arch.AddMaintainerRequest{
-							Config: c.Info,
-							Status: c.Status,
-						},
-					})
-				if err != nil {
-					return errors.Trace(err)
-				}
-				c.maintainerStatus = maintainerStatusStarting
-			}
-			if c.maintainerStatus == maintainerStatusRunning {
-				if !loged {
-					log.Info("changefeed maintainer is running",
-						zap.String("ID", c.ID.String()),
-						zap.String("maintainer", c.maintainerCaptureID))
-					loged = true
-				}
-			}
-		}
 	}
 }
 
