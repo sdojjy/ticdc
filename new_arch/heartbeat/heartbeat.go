@@ -23,6 +23,15 @@ import (
 	"time"
 )
 
+type Liveness[T any] interface {
+	// IsAlive check weather the component is alive, if not,  this component must exit
+	IsAlive() bool
+	// IsWorkable check weather the component can workload, if not, this component must be paused
+	IsWorkable() bool
+	// UpdateHeartbeat saves last heartbeat from peer
+	UpdateHeartbeat(t T)
+}
+
 // 1. 组件启动的时候需要通知所有的 capture 一次 . 告诉子组件有新的 master 产生了， 让他们更改 master 地址 ，收集信息
 // 2. heartbeat 是从 client 向 master 发送？
 type AliveDetectionServer struct {
