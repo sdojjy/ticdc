@@ -114,7 +114,7 @@ func (c *Maintainer) Tick(ctx context.Context,
 		// master bootstraps
 		if message.BootstrapRequest != nil {
 			c.masterVersion = message.MasterVersion
-			c.masterID = message.Sender
+			c.masterID = message.From
 			// get all component information and send it to master
 			var status []string
 			c.Iterate(func(m *Module) {

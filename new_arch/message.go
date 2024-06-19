@@ -15,14 +15,24 @@ package new_arch
 
 import "github.com/pingcap/tiflow/cdc/model"
 
+type MessageHeader struct {
+	SenderVersion int64 `json:"sender_version,omitempty"`
+	SenderEpoch   int64 `json:"sender_epoch,omitempty"`
+}
+
 type Message struct {
+	Header *MessageHeader `json:"header"`
+	Type   string         `json:"type"`
+
 	MasterVersion int64  `json:"master_version,omitempty"`
-	Sender        string `json:"sender,omitempty"`
+	From          string `json:"sender,omitempty"`
 	To            string `json:"to,omitempty"`
 
-	AddMaintainerRequest    *AddMaintainerRequest    `json:"add_maintainer_request,omitempty"`
-	AddMaintainerResponse   *AddMaintainerResponse   `json:"add_maintainer_response,omitempty"`
-	RemoveMaintainerRequest *RemoveMaintainerRequest `json:"remove_maintainer_request,omitempty"`
+	AddMaintainerRequest      *AddMaintainerRequest      `json:"add_maintainer_request,omitempty"`
+	RemoveMaintainerRequest   *RemoveMaintainerRequest   `json:"remove_maintainer_request,omitempty"`
+	DispatchMaintainerRequest *DispatchMaintainerRequest `json:"dispatch_maintainer_request,omitempty"`
+
+	AddMaintainerResponse *AddMaintainerResponse `json:"add_maintainer_response,omitempty"`
 
 	AddTableRangeMaintainerRequest  *AddTableRangeMaintainerRequest  `json:"add_table_range_maintainer_request,omitempty"`
 	AddTableRangeMaintainerResponse *AddTableRangeMaintainerResponse `json:"add_table_range_maintainer_response,omitempty"`
@@ -34,6 +44,11 @@ type Message struct {
 
 	ChangefeedHeartbeatRequest  *ChangefeedHeartbeatRequest  `json:"changefeed_heartbeat_request,omitempty"`
 	ChangefeedHeartbeatResponse *ChangefeedHeartbeatResponse `json:"changefeed_heartbeat_response,omitempty"`
+}
+
+type DispatchMaintainerRequest struct {
+	AddMaintainerRequest    *AddMaintainerRequest    `json:"add_maintainer_request,omitempty"`
+	RemoveMaintainerRequest *RemoveMaintainerRequest `json:"remove_maintainer_request,omitempty"`
 }
 
 type DispatchComponentRequest struct {
@@ -59,8 +74,9 @@ type AddTableRangeMaintainerResponse struct {
 }
 
 type AddMaintainerRequest struct {
-	Config *model.ChangeFeedInfo   `json:"config,omitempty"`
-	Status *model.ChangeFeedStatus `json:"status,omitempty"`
+	Config      *model.ChangeFeedInfo   `json:"config,omitempty"`
+	Status      *model.ChangeFeedStatus `json:"status,omitempty"`
+	IsSecondary bool                    `json:"is_secondary,omitempty"`
 }
 
 type AddMaintainerResponse struct {
@@ -76,11 +92,12 @@ type ChangefeedHeartbeatRequest struct {
 }
 
 type ChangefeedHeartbeatResponse struct {
-	From        string              `json:"from,omitempty"`
-	Liveness    int32               `json:"liveness,omitempty"`
 	Changefeeds []*ChangefeedStatus `json:"changefeeds,omitempty"`
 }
 
 type ChangefeedStatus struct {
-	ID model.ChangeFeedID `json:"id,omitempty"`
+	ID             model.ChangeFeedID `json:"id,omitempty"`
+	State          string             `json:"state,omitempty"`
+	SchedulerState int                `json:"scheduler_state,omitempty"`
+	CheckpointTs   uint64             `json:"checkpoint_ts,omitempty,string"`
 }

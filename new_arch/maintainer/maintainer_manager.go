@@ -15,16 +15,20 @@ package maintainer
 
 import (
 	"context"
+	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/vars"
 	"github.com/pingcap/tiflow/new_arch"
 	"github.com/pingcap/tiflow/pkg/config"
 	"github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/upstream"
+	"go.uber.org/zap"
 )
 
 // MaintainerManager runs on every capture, receive command from coordinator
 type MaintainerManager struct {
+	//随机生成，coordinator 初始化时上报上去
+	Epoch       string
 	maintainers map[string]*Maintainer
 
 	upstreamManager *upstream.Manager
@@ -57,37 +61,108 @@ func NewMaintainerManager(upstreamManager *upstream.Manager,
 }
 
 func (m *MaintainerManager) HandleMessage(send string, msg *new_arch.Message) {
-	if msg.AddMaintainerRequest != nil {
-		changefeedMaintainer := NewMaintainer(model.DefaultChangeFeedID(msg.AddMaintainerRequest.Config.ID),
-			m.upstreamManager, m.cfg, m.globalVars, msg.AddMaintainerRequest.Config, msg.AddMaintainerRequest.Status)
-		m.maintainers[msg.AddMaintainerRequest.Config.ID] = changefeedMaintainer
-		changefeedMaintainer.SendMessage(context.Background(), send, new_arch.GetCoordinatorTopic(),
-			&new_arch.Message{
-				AddMaintainerResponse: &new_arch.AddMaintainerResponse{
-					ID:     msg.AddMaintainerRequest.Config.ID,
-					Status: "running",
-				},
-			})
-		changefeedMaintainer.ScheduleTableRangeManager(context.Background())
-	} else if msg.ChangefeedHeartbeatRequest != nil {
-		m.masterID = send
-		m.masterVersion = msg.MasterVersion
-		//todo: update master version, master client ID
-		var changefeeds []*new_arch.ChangefeedStatus
-		for ID, _ := range m.maintainers {
-			changefeeds = append(changefeeds, &new_arch.ChangefeedStatus{
-				ID: model.DefaultChangeFeedID(ID),
-			})
+	var msgs []*new_arch.Message
+	var err error
+	if msg.DispatchMaintainerRequest != nil {
+		err = m.handleDispatchMaintainerRequest(msg.DispatchMaintainerRequest, "")
+		if err != nil {
+			log.Error("handle message failed", zap.Error(err))
 		}
-		m.SendMessage(context.Background(), send, new_arch.GetCoordinatorTopic(),
-			&new_arch.Message{
-				ChangefeedHeartbeatResponse: &new_arch.ChangefeedHeartbeatResponse{
-					From:        m.selfCaptureID,
-					Liveness:    0,
-					Changefeeds: changefeeds,
-				},
-			})
+		msgs, err = m.handleMessageHeartbeat()
+	} else if msg.BootstrapRequest != nil {
+		m.masterVersion = msg.Header.SenderVersion
+		m.masterID = msg.From
+		msgs, err = m.handleMessageHeartbeat()
 	}
+
+	for _, msg := range msgs {
+		if err := m.SendMessage(context.Background(), m.masterID, new_arch.GetCoordinatorTopic(), msg); err != nil {
+			log.Error("send message failed", zap.Error(err))
+		}
+	}
+}
+
+func (m *MaintainerManager) handleBootstrapRequest() {
+	// check version
+}
+
+func (m *MaintainerManager) handleDispatchMaintainerRequest(
+	request *new_arch.DispatchMaintainerRequest,
+	epoch string,
+) error {
+	if m.Epoch != epoch {
+		log.Info("schedulerv3: agent receive dispatch table request " +
+			"epoch does not match, ignore it")
+		return nil
+	}
+	// make the assumption that all tables are tracked by the agent now.
+	// this should be guaranteed by the caller of the method.
+	if request.AddMaintainerRequest != nil {
+		span := model.ChangeFeedID{ID: request.AddMaintainerRequest.Config.ID}
+		task := &dispatchMaintainerTask{
+			ID:        span,
+			IsRemove:  false,
+			IsPrepare: request.AddMaintainerRequest.IsSecondary,
+			status:    dispatchTaskReceived,
+		}
+		cf, ok := m.maintainers[request.AddMaintainerRequest.Config.ID]
+		if !ok {
+			cf = NewMaintainer(span, m.upstreamManager, m.cfg, m.globalVars,
+				request.AddMaintainerRequest.Config, request.AddMaintainerRequest.Status)
+			m.maintainers[request.AddMaintainerRequest.Config.ID] = cf
+		}
+		cf.injectDispatchTableTask(task)
+	} else if request.RemoveMaintainerRequest != nil {
+		span := model.ChangeFeedID{ID: request.AddMaintainerRequest.Config.ID}
+		cf, ok := m.maintainers[request.AddMaintainerRequest.Config.ID]
+		if !ok {
+			log.Warn("schedulerv3: agent ignore remove table request, "+
+				"since the table not found",
+				zap.String("changefeed", span.ID),
+				zap.String("span", span.String()),
+				zap.Any("request", request))
+			return nil
+		}
+		task := &dispatchMaintainerTask{
+			ID:       span,
+			IsRemove: true,
+			status:   dispatchTaskReceived,
+		}
+		cf.injectDispatchTableTask(task)
+	} else {
+		log.Warn("schedulerv3: agent ignore unknown dispatch table request",
+			zap.Any("request", request))
+		return nil
+	}
+	return m.handleTasks()
+}
+
+func (m *MaintainerManager) handleTasks() error {
+	var err error
+	for _, cf := range m.maintainers {
+		if cf.task == nil {
+			continue
+		}
+		if cf.task.IsRemove {
+			err = cf.handleRemoveTableTask()
+		} else {
+			err = cf.handleAddTableTask()
+		}
+		if err != nil {
+			return errors.Trace(err)
+		}
+	}
+	return nil
+}
+
+func (m *MaintainerManager) handleMessageHeartbeat() ([]*new_arch.Message, error) {
+	msg := &new_arch.Message{}
+	cfs := make([]*new_arch.ChangefeedStatus, len(m.maintainers))
+	for _, cf := range m.maintainers {
+		cfs = append(cfs, cf.getStatus())
+	}
+	msg.ChangefeedHeartbeatResponse = &new_arch.ChangefeedHeartbeatResponse{Changefeeds: cfs}
+	return []*new_arch.Message{msg}, nil
 }
 
 func (m *MaintainerManager) SendMessage(ctx context.Context, capture string, topic string, msg *new_arch.Message) error {
