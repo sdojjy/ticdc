@@ -92,6 +92,7 @@ type ChangefeedHeartbeatRequest struct {
 }
 
 type ChangefeedHeartbeatResponse struct {
+	Liveness    int32               `json:"liveness,omitempty"`
 	Changefeeds []*ChangefeedStatus `json:"changefeeds,omitempty"`
 }
 

@@ -144,7 +144,7 @@ func (c *CaptureManager) checkAllCaptureInitialized() bool {
 
 // HandleMessage handles messages sent from other captures.
 func (c *CaptureManager) HandleMessage(
-	msgs []*new_arch.ChangefeedHeartbeatResponse,
+	msgs []*new_arch.Message,
 ) {
 	for _, msg := range msgs {
 		captureStatus, ok := c.Captures[msg.From]
@@ -153,7 +153,7 @@ func (c *CaptureManager) HandleMessage(
 				zap.String("capture", msg.From))
 			continue
 		}
-		captureStatus.handleHeartbeatResponse(msg)
+		captureStatus.handleHeartbeatResponse(msg.ChangefeedHeartbeatResponse)
 	}
 }
 

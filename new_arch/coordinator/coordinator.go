@@ -72,7 +72,7 @@ func (c *coordinatorImpl) HandleMessage(send string, msg *new_arch.Message) {
 	}
 	//todo: 和tick 是一个多线程读写处理, 使用 actor system
 	if msg.ChangefeedHeartbeatResponse != nil {
-		c.captureManager.HandleMessage([]*new_arch.ChangefeedHeartbeatResponse{msg.ChangefeedHeartbeatResponse})
+		c.captureManager.HandleMessage([]*new_arch.Message{msg})
 	}
 }
 
