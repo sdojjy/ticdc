@@ -281,18 +281,43 @@ func (r *ChangefeedManager) handleAddTableTask(
 	table, ok := r.changefeeds[task.Changefeed]
 	if !ok {
 		table = &changefeed{
-			primary:          task.CaptureID,
-			Captures:         make(map[model.CaptureID]Role),
-			ID:               task.Changefeed,
-			Info:             nil,
-			Status:           nil,
-			state:            "",
-			errors:           nil,
-			maintainerStatus: "",
-			coordinator:      nil,
-			scheduleState:    0,
+			primary:  task.CaptureID,
+			Captures: make(map[model.CaptureID]Role),
+			ID:       task.Changefeed,
+			Info:     task.Info,
+			Status:   task.Status,
 		}
 		r.changefeeds[task.Changefeed] = table
 	}
 	return table.handleAdd(task.CaptureID)
+}
+
+func (r *ChangefeedManager) handleMessageHeartbeatResponse(
+	from model.CaptureID, msg *new_arch.ChangefeedHeartbeatResponse,
+) ([]*new_arch.Message, error) {
+	sentMsgs := make([]*new_arch.Message, 0)
+	for _, status := range msg.Changefeeds {
+		table, ok := r.changefeeds[status.ID]
+		if !ok {
+			log.Info("schedulerv3: ignore table status no table found",
+				zap.Any("from", from),
+				zap.Any("message", status))
+			continue
+		}
+		msgs, err := table.handleTableStatus(from, &ChangefeedStatus{
+			ComponentStatus: scheduller.ComponentStatus(status.ComponentStatus),
+			ChangefeedID:    status.ID,
+		})
+		if err != nil {
+			return nil, errors.Trace(err)
+		}
+		if table.hasRemoved() {
+			log.Info("schedulerv3: table has removed",
+				zap.Any("from", from),
+				zap.Any("tableID", status))
+			delete(r.changefeeds, status.ID)
+		}
+		sentMsgs = append(sentMsgs, msgs...)
+	}
+	return sentMsgs, nil
 }

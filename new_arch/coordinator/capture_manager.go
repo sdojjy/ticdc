@@ -172,8 +172,8 @@ func (c *CaptureManager) HandleAliveCaptureUpdate(
 				zap.String("capture", id))
 			// 发送 bootstrap 消息
 			msgs = append(msgs, &new_arch.Message{
-				To:                         id,
-				ChangefeedHeartbeatRequest: &new_arch.ChangefeedHeartbeatRequest{},
+				To:               id,
+				BootstrapRequest: &new_arch.BootstrapRequest{},
 			})
 		}
 	}

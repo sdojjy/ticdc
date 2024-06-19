@@ -23,6 +23,8 @@ import (
 	"github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/upstream"
 	"go.uber.org/zap"
+	"sync"
+	"time"
 )
 
 // MaintainerManager runs on every capture, receive command from coordinator
@@ -39,6 +41,8 @@ type MaintainerManager struct {
 	masterVersion int64
 
 	selfCaptureID model.CaptureID
+	msgLock       sync.RWMutex
+	msgBuf        []*new_arch.Message
 }
 
 func NewMaintainerManager(upstreamManager *upstream.Manager,
@@ -54,36 +58,64 @@ func NewMaintainerManager(upstreamManager *upstream.Manager,
 	_, _ = m.globalVars.MessageServer.SyncAddHandler(context.Background(), new_arch.GetChangefeedMaintainerManagerTopic(),
 		&new_arch.Message{}, func(sender string, messageI interface{}) error {
 			message := messageI.(*new_arch.Message)
-			m.HandleMessage(sender, message)
+			m.msgLock.Lock()
+			m.msgBuf = append(m.msgBuf, message)
+			m.msgLock.Unlock()
 			return nil
 		})
 	return m
 }
 
+func (m *MaintainerManager) Tick(ctx context.Context) error {
+	tick := time.NewTicker(time.Millisecond * 50)
+	for {
+		select {
+		case <-ctx.Done():
+			return errors.Trace(ctx.Err())
+		case <-tick.C:
+			m.msgLock.Lock()
+			buf := m.msgBuf
+			m.msgBuf = nil
+			m.msgLock.Unlock()
+			for _, msg := range buf {
+				m.HandleMessage(msg.From, msg)
+			}
+			if m.masterID != "" {
+				msgs, err := m.handleMessageHeartbeat()
+				if err != nil {
+					return errors.Trace(err)
+				}
+				m.sendMsg(msgs)
+			}
+		}
+	}
+}
+
 func (m *MaintainerManager) HandleMessage(send string, msg *new_arch.Message) {
-	var msgs []*new_arch.Message
 	var err error
 	if msg.DispatchMaintainerRequest != nil {
 		err = m.handleDispatchMaintainerRequest(msg.DispatchMaintainerRequest, "")
 		if err != nil {
 			log.Error("handle message failed", zap.Error(err))
 		}
-		msgs, err = m.handleMessageHeartbeat()
 	} else if msg.BootstrapRequest != nil {
 		m.masterVersion = msg.Header.SenderVersion
 		m.masterID = msg.From
-		msgs, err = m.handleMessageHeartbeat()
 	}
+}
 
+func (m *MaintainerManager) sendMsg(msgs []*new_arch.Message) {
 	for _, msg := range msgs {
+		msg.From = m.masterID
+		msg.To = m.masterID
+		msg.Header = &new_arch.MessageHeader{
+			SenderVersion: 0,
+			SenderEpoch:   0,
+		}
 		if err := m.SendMessage(context.Background(), m.masterID, new_arch.GetCoordinatorTopic(), msg); err != nil {
 			log.Error("send message failed", zap.Error(err))
 		}
 	}
-}
-
-func (m *MaintainerManager) handleBootstrapRequest() {
-	// check version
 }
 
 func (m *MaintainerManager) handleDispatchMaintainerRequest(
@@ -157,7 +189,7 @@ func (m *MaintainerManager) handleTasks() error {
 
 func (m *MaintainerManager) handleMessageHeartbeat() ([]*new_arch.Message, error) {
 	msg := &new_arch.Message{}
-	cfs := make([]*new_arch.ChangefeedStatus, len(m.maintainers))
+	cfs := make([]*new_arch.ChangefeedStatus, 0, len(m.maintainers))
 	for _, cf := range m.maintainers {
 		cfs = append(cfs, cf.getStatus())
 	}

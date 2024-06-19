@@ -114,7 +114,7 @@ func (c *changefeed) hasRemoved() bool {
 
 func (c *changefeed) pollOnAbsent(
 	input *ChangefeedStatus, captureID model.CaptureID) (bool, error) {
-	switch input.SchedulerComponentStatus {
+	switch input.ComponentStatus {
 	case scheduller.ComponentStatusAbsent:
 		c.scheduleState = scheduller.SchedulerComponentStatusPrepare
 		err := c.setCapture(captureID, RoleSecondary)
@@ -136,13 +136,10 @@ func (c *changefeed) pollOnAbsent(
 
 func (c *changefeed) pollOnPrepare(
 	input *ChangefeedStatus, captureID model.CaptureID) (*new_arch.Message, bool, error) {
-	switch input.SchedulerComponentStatus {
+	switch input.ComponentStatus {
 	case scheduller.ComponentStatusAbsent:
 		if c.isInRole(captureID, RoleSecondary) {
-			return &new_arch.Message{
-				To:                   captureID,
-				AddMaintainerRequest: &new_arch.AddMaintainerRequest{},
-			}, false, nil
+			return c.getAddChangefeedRequest(captureID, true), false, nil
 		}
 	case scheduller.ComponentStatusPreparing:
 		if c.isInRole(captureID, RoleSecondary) {
@@ -202,7 +199,7 @@ func (c *changefeed) pollOnPrepare(
 
 func (c *changefeed) pollOnReplicating(
 	input *ChangefeedStatus, captureID model.CaptureID) (*new_arch.Message, bool, error) {
-	switch input.SchedulerComponentStatus {
+	switch input.ComponentStatus {
 	case scheduller.ComponentStatusWorking:
 		if c.primary == captureID {
 			c.update(input)
@@ -235,18 +232,39 @@ func (c *changefeed) pollOnReplicating(
 	return nil, false, nil
 }
 
+func (c *changefeed) getAddChangefeedRequest(capture string, secondary bool) *new_arch.Message {
+	return &new_arch.Message{
+		To: capture,
+		DispatchMaintainerRequest: &new_arch.DispatchMaintainerRequest{
+			AddMaintainerRequest: &new_arch.AddMaintainerRequest{
+				Config:      c.Info,
+				Status:      c.Status,
+				IsSecondary: secondary,
+			}},
+	}
+}
+
+func (c *changefeed) getRemoveChangefeedRequest(capture string) *new_arch.Message {
+	return &new_arch.Message{
+		To: capture,
+		DispatchMaintainerRequest: &new_arch.DispatchMaintainerRequest{
+			RemoveMaintainerRequest: &new_arch.RemoveMaintainerRequest{
+				ID: c.Info.ID,
+			},
+		},
+	}
+}
+
 func (c *changefeed) pollOnCommit(
 	input *ChangefeedStatus, captureID model.CaptureID) (*new_arch.Message, bool, error) {
-	switch input.SchedulerComponentStatus {
+	switch input.ComponentStatus {
 	case scheduller.ComponentStatusPrepared:
 		if c.isInRole(captureID, RoleSecondary) {
 			if c.primary != "" {
 				// Secondary capture is prepared and waiting for stopping primary.
 				// Send message to primary, ask for stopping.
 				// 从primary 节点删除任务
-				return &new_arch.Message{
-					To: c.primary,
-				}, false, nil
+				return c.getRemoveChangefeedRequest(c.primary), false, nil
 			}
 			if c.hasRole(RoleUndetermined) {
 				// There are other captures that have the table.
@@ -299,9 +317,7 @@ func (c *changefeed) pollOnCommit(
 				zap.String("original", original),
 				zap.String("captureID", secondary))
 			// 发送消息给secondary 节点，开始真正工作
-			return &new_arch.Message{
-				To: c.primary,
-			}, false, nil
+			return c.getAddChangefeedRequest(c.primary, false), false, nil
 		} else if c.isInRole(captureID, RoleSecondary) {
 			// As it sends RemoveTableRequest to the original primary
 			// upon entering Commit state. Do not change state and wait
@@ -370,13 +386,11 @@ func (c *changefeed) pollOnCommit(
 
 func (c *changefeed) pollOnRemoving(
 	input *ChangefeedStatus, captureID model.CaptureID) (*new_arch.Message, bool, error) {
-	switch input.SchedulerComponentStatus {
+	switch input.ComponentStatus {
 	case scheduller.ComponentStatusPreparing,
 		scheduller.ComponentStatusPrepared,
 		scheduller.ComponentStatusWorking:
-		return &new_arch.Message{
-			To: captureID,
-		}, false, nil
+		return c.getRemoveChangefeedRequest(captureID), false, nil
 	case scheduller.ComponentStatusAbsent, scheduller.ComponentStatusStopped:
 		var err error
 		if c.primary == captureID {
@@ -408,8 +422,8 @@ func (c *changefeed) update(
 }
 
 type ChangefeedStatus struct {
-	SchedulerComponentStatus scheduller.ComponentStatus
-	ChangefeedID             model.ChangeFeedID
+	ComponentStatus scheduller.ComponentStatus
+	ChangefeedID    model.ChangeFeedID
 }
 
 // poll transit state based on input and the current state.
@@ -465,6 +479,12 @@ func (c *changefeed) poll(
 	return msgBuf, nil
 }
 
+func (r *changefeed) handleTableStatus(
+	from model.CaptureID, status *ChangefeedStatus,
+) ([]*new_arch.Message, error) {
+	return r.poll(status, from)
+}
+
 func (r *changefeed) handleMove(
 	dest model.CaptureID,
 ) ([]*new_arch.Message, error) {
@@ -493,8 +513,8 @@ func (r *changefeed) handleMove(
 		zap.String("changefeed", r.ID.ID),
 		zap.Any("replicationSet", r))
 	status := ChangefeedStatus{
-		ChangefeedID:             r.ID,
-		SchedulerComponentStatus: scheduller.ComponentStatusAbsent,
+		ChangefeedID:    r.ID,
+		ComponentStatus: scheduller.ComponentStatusAbsent,
 	}
 	return r.poll(&status, dest)
 }
@@ -514,8 +534,8 @@ func (r *changefeed) handleAdd(
 		return nil, errors.Trace(err)
 	}
 	status := ChangefeedStatus{
-		ChangefeedID:             r.ID,
-		SchedulerComponentStatus: scheduller.ComponentStatusAbsent,
+		ChangefeedID:    r.ID,
+		ComponentStatus: scheduller.ComponentStatusAbsent,
 	}
 	msgs, err := r.poll(&status, captureID)
 	if err != nil {
@@ -547,8 +567,8 @@ func (r *changefeed) handleRemove() ([]*new_arch.Message, error) {
 		zap.String("changefeed", r.ID.ID),
 		zap.Any("replicationSet", r))
 	status := ChangefeedStatus{
-		ChangefeedID:             r.ID,
-		SchedulerComponentStatus: scheduller.ComponentStatusWorking,
+		ChangefeedID:    r.ID,
+		ComponentStatus: scheduller.ComponentStatusWorking,
 	}
 	return r.poll(&status, r.primary)
 }
@@ -566,8 +586,8 @@ func (r *changefeed) handleCaptureShutdown(
 	}
 	// The capture has shutdown, the table has stopped.
 	status := ChangefeedStatus{
-		ChangefeedID:             r.ID,
-		SchedulerComponentStatus: scheduller.ComponentStatusStopped,
+		ChangefeedID:    r.ID,
+		ComponentStatus: scheduller.ComponentStatusStopped,
 	}
 	oldState := r.scheduleState
 	msgs, err := r.poll(&status, captureID)

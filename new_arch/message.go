@@ -13,11 +13,13 @@
 
 package new_arch
 
-import "github.com/pingcap/tiflow/cdc/model"
+import (
+	"github.com/pingcap/tiflow/cdc/model"
+)
 
 type MessageHeader struct {
-	SenderVersion int64 `json:"sender_version,omitempty"`
-	SenderEpoch   int64 `json:"sender_epoch,omitempty"`
+	SenderVersion int64 `json:"sender_version,omitempty,string"`
+	SenderEpoch   int64 `json:"sender_epoch,omitempty,string"`
 }
 
 type Message struct {
@@ -37,12 +39,10 @@ type Message struct {
 	AddTableRangeMaintainerRequest  *AddTableRangeMaintainerRequest  `json:"add_table_range_maintainer_request,omitempty"`
 	AddTableRangeMaintainerResponse *AddTableRangeMaintainerResponse `json:"add_table_range_maintainer_response,omitempty"`
 
-	BootstrapRequest  *BootstrapRequest  `json:"bootstrap_request,omitempty"`
-	BootstrapResponse *BootstrapResponse `json:"bootstrap_response,omitempty"`
+	BootstrapRequest *BootstrapRequest `json:"bootstrap_request,omitempty"`
 
 	DispatchComponentRequest *DispatchComponentRequest `json:"msg_dispatch_component_request,omitempty"`
 
-	ChangefeedHeartbeatRequest  *ChangefeedHeartbeatRequest  `json:"changefeed_heartbeat_request,omitempty"`
 	ChangefeedHeartbeatResponse *ChangefeedHeartbeatResponse `json:"changefeed_heartbeat_response,omitempty"`
 }
 
@@ -57,9 +57,6 @@ type DispatchComponentRequest struct {
 }
 
 type BootstrapRequest struct {
-}
-
-type BootstrapResponse struct {
 }
 
 type AddTableRangeMaintainerRequest struct {
@@ -87,18 +84,14 @@ type RemoveMaintainerRequest struct {
 	ID string `json:"id,omitempty"`
 }
 
-type ChangefeedHeartbeatRequest struct {
-	LivenessTimestamp int64 `json:"liveness_time,omitempty"`
-}
-
 type ChangefeedHeartbeatResponse struct {
 	Liveness    int32               `json:"liveness,omitempty"`
 	Changefeeds []*ChangefeedStatus `json:"changefeeds,omitempty"`
 }
 
 type ChangefeedStatus struct {
-	ID             model.ChangeFeedID `json:"id,omitempty"`
-	State          string             `json:"state,omitempty"`
-	SchedulerState int                `json:"scheduler_state,omitempty"`
-	CheckpointTs   uint64             `json:"checkpoint_ts,omitempty,string"`
+	ID              model.ChangeFeedID `json:"id,omitempty"`
+	State           string             `json:"state,omitempty"`
+	ComponentStatus int                `json:"scheduler_state,omitempty"`
+	CheckpointTs    uint64             `json:"checkpoint_ts,omitempty,string"`
 }

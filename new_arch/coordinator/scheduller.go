@@ -71,6 +71,8 @@ type MoveChangefeed struct {
 type AddChangefeed struct {
 	Changefeed model.ChangeFeedID
 	CaptureID  model.CaptureID
+	Info       *model.ChangeFeedInfo
+	Status     *model.ChangeFeedStatus
 }
 
 type RemoveChangefeed struct {
@@ -211,6 +213,8 @@ func newBurstAddTables(newChangefeeds []*changefeed, captureIDs []model.CaptureI
 		changefeeds = append(changefeeds, AddChangefeed{
 			Changefeed: cf.ID,
 			CaptureID:  targetCapture,
+			Info:       cf.Info,
+			Status:     cf.Status,
 		})
 		log.Info("schedulerv3: burst add changefeed",
 			zap.String("changefeed", cf.ID.ID),

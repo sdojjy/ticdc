@@ -15,6 +15,7 @@ package coordinator
 
 import (
 	"context"
+	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/owner"
 	"github.com/pingcap/tiflow/cdc/scheduler"
@@ -24,6 +25,7 @@ import (
 	"github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/orchestrator"
 	"github.com/pingcap/tiflow/pkg/upstream"
+	"go.uber.org/zap"
 	"io"
 )
 
@@ -37,6 +39,9 @@ type coordinatorImpl struct {
 	selfCaptureID     model.CaptureID
 	schedulerManager  *Manager
 	changefeedManager *ChangefeedManager
+
+	version int64
+	epoch   int64
 }
 
 func NewCoordinator(
@@ -73,6 +78,11 @@ func (c *coordinatorImpl) HandleMessage(send string, msg *new_arch.Message) {
 	//todo: 和tick 是一个多线程读写处理, 使用 actor system
 	if msg.ChangefeedHeartbeatResponse != nil {
 		c.captureManager.HandleMessage([]*new_arch.Message{msg})
+		msgs, err := c.changefeedManager.handleMessageHeartbeatResponse(msg.From, msg.ChangefeedHeartbeatResponse)
+		if err != nil {
+			log.Warn("failed to handle message heartbeat", zap.Error(err))
+		}
+		c.sendMsgs(context.Background(), msgs)
 	}
 }
 
@@ -176,12 +186,8 @@ func (c *coordinatorImpl) Tick(ctx context.Context,
 	}
 
 	msgs := c.captureManager.HandleAliveCaptureUpdate(state.Captures)
-	for _, msg := range msgs {
-		client := c.globalVars.MessageRouter.GetClient(msg.To)
-		_, err := client.TrySendMessage(ctx, new_arch.GetChangefeedMaintainerManagerTopic(), msg)
-		if err != nil {
-			return nil, errors.Trace(err)
-		}
+	if err := c.sendMsgs(ctx, msgs); err != nil {
+		return nil, errors.Trace(err)
 	}
 
 	// only balance tables when all capture is replied bootstrap messages
@@ -191,6 +197,22 @@ func (c *coordinatorImpl) Tick(ctx context.Context,
 		c.BalanceTables(ctx)
 	}
 	return state, nil
+}
+
+func (c *coordinatorImpl) sendMsgs(ctx context.Context, msgs []*new_arch.Message) error {
+	for _, msg := range msgs {
+		msg.From = c.selfCaptureID
+		msg.Header = &new_arch.MessageHeader{
+			SenderVersion: c.version,
+			SenderEpoch:   c.epoch,
+		}
+		client := c.globalVars.MessageRouter.GetClient(msg.To)
+		_, err := client.TrySendMessage(ctx, new_arch.GetChangefeedMaintainerManagerTopic(), msg)
+		if err != nil {
+			return errors.Trace(err)
+		}
+	}
+	return nil
 }
 
 func (c *coordinatorImpl) BalanceTables(ctx context.Context) error {
@@ -223,8 +245,8 @@ func (c *coordinatorImpl) ScheduleChangefeedMaintainer(ctx context.Context,
 	if err != nil {
 		return errors.Trace(err)
 	}
-	if messages != nil {
-
+	if err := c.sendMsgs(ctx, messages); err != nil {
+		return errors.Trace(err)
 	}
 
 	//idx := 0

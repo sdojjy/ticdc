@@ -25,9 +25,7 @@ import (
 	"github.com/pingcap/tiflow/new_arch/scheduller"
 	"github.com/pingcap/tiflow/pkg/config"
 	"github.com/pingcap/tiflow/pkg/errors"
-	"github.com/pingcap/tiflow/pkg/etcd"
 	pfilter "github.com/pingcap/tiflow/pkg/filter"
-	"github.com/pingcap/tiflow/pkg/orchestrator"
 	"github.com/pingcap/tiflow/pkg/upstream"
 	"go.uber.org/zap"
 )
@@ -151,8 +149,9 @@ func (m *Maintainer) getAndUpdateTableSpanState(old scheduller.ComponentStatus) 
 func (m *Maintainer) initChangefeed() (bool, error) {
 	m.registerHandler()
 	up, _ := m.upstreamManager.GetDefaultUpstream()
-	state := orchestrator.NewChangefeedReactorState(etcd.DefaultCDCClusterID, m.ID)
-	manager := owner.NewFeedStateManager(up, state)
+	//state := orchestrator.NewChangefeedReactorState(etcd.DefaultCDCClusterID, m.ID)
+	//manager := owner.NewFeedStateManager(up, state)
+	var manager owner.FeedStateManager
 	m.changefeed = owner.NewChangefeed(m.ID, m.info, m.status, manager, up, m.cfg, m.globalVars)
 	//check change initialization ?
 	//m.changefeed.initial =
@@ -317,8 +316,9 @@ func (m *Maintainer) injectDispatchTableTask(task *dispatchMaintainerTask) {
 
 func (m *Maintainer) getStatus() *new_arch.ChangefeedStatus {
 	return &new_arch.ChangefeedStatus{
-		ID:             m.ID,
-		SchedulerState: int(m.componentStatus),
-		CheckpointTs:   m.status.CheckpointTs,
+		ID:              m.ID,
+		ComponentStatus: int(m.componentStatus),
+		CheckpointTs:    0,
+		//CheckpointTs:    m.status.CheckpointTs,
 	}
 }

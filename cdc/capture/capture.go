@@ -415,8 +415,8 @@ func (c *captureImpl) run(stdCtx context.Context) error {
 		return nil
 	})
 	g.Go(func() error {
-		maintainer.NewMaintainerManager(c.upstreamManager, c.config.Debug.Scheduler, globalVars)
-		return nil
+		m := maintainer.NewMaintainerManager(c.upstreamManager, c.config.Debug.Scheduler, globalVars)
+		return m.Tick(stdCtx)
 	})
 	g.Go(func() error {
 		table_range_maintainer.NewTableRangeMaintainerManager(c.upstreamManager, c.config.Debug.Scheduler, globalVars)
