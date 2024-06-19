@@ -114,7 +114,7 @@ func newBalanceMoveTables(
 
 	for _, rep := range replications {
 		if rep.scheduleState == scheduller.SchedulerComponentStatusWorking {
-			tablesPerCapture[rep.maintainerCaptureID][rep.ID] = rep
+			tablesPerCapture[rep.primary][rep.ID] = rep
 		}
 	}
 

@@ -265,14 +265,14 @@ func (r *ChangefeedManager) handleRemoveTableTask(
 		delete(r.changefeeds, task.Changefeed)
 		return nil, nil
 	}
-	return table.handleRemoveChangefeed()
+	return table.handleRemove()
 }
 
 func (r *ChangefeedManager) handleMoveChangefeedTask(
 	task *MoveChangefeed,
 ) ([]*new_arch.Message, error) {
 	table, _ := r.changefeeds[task.Changefeed]
-	return table.handleMoveTable(task.DestCapture)
+	return table.handleMove(task.DestCapture)
 }
 
 func (r *ChangefeedManager) handleAddTableTask(
@@ -281,19 +281,18 @@ func (r *ChangefeedManager) handleAddTableTask(
 	table, ok := r.changefeeds[task.Changefeed]
 	if !ok {
 		table = &changefeed{
-			maintainerCaptureID: task.CaptureID,
-			standbyCaptureID:    "",
-			Captures:            make(map[model.CaptureID]Role),
-			ID:                  task.Changefeed,
-			Info:                nil,
-			Status:              nil,
-			state:               "",
-			errors:              nil,
-			maintainerStatus:    "",
-			coordinator:         nil,
-			scheduleState:       0,
+			primary:          task.CaptureID,
+			Captures:         make(map[model.CaptureID]Role),
+			ID:               task.Changefeed,
+			Info:             nil,
+			Status:           nil,
+			state:            "",
+			errors:           nil,
+			maintainerStatus: "",
+			coordinator:      nil,
+			scheduleState:    0,
 		}
 		r.changefeeds[task.Changefeed] = table
 	}
-	return table.handleAddTable(task.CaptureID)
+	return table.handleAdd(task.CaptureID)
 }

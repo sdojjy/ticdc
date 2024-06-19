@@ -129,15 +129,15 @@ func (d *drainCaptureScheduler) Schedule(
 			break
 		}
 
-		if rep.maintainerCaptureID == d.target {
+		if rep.primary == d.target {
 			if len(victimSpans) < maxTaskConcurrency {
 				victimSpans = append(victimSpans, rep)
 			}
 		}
 
 		// only calculate workload of other captures not the drain target.
-		if rep.maintainerCaptureID != d.target {
-			captureWorkload[rep.maintainerCaptureID]++
+		if rep.primary != d.target {
+			captureWorkload[rep.primary]++
 		}
 	}
 	if skipDrain {

@@ -125,10 +125,10 @@ func (b *basicScheduler) Schedule(
 		rep, ok := replications[model.DefaultChangeFeedID(cf.ID)]
 		if !ok {
 			newChangefeeds = append(newChangefeeds, &changefeed{
-				maintainerCaptureID: "",
-				ID:                  model.DefaultChangeFeedID(cf.ID),
-				Info:                &cf,
-				scheduleState:       scheduller.SchedulerComponentStatusAbsent,
+				primary:       "",
+				ID:            model.DefaultChangeFeedID(cf.ID),
+				Info:          &cf,
+				scheduleState: scheduller.SchedulerComponentStatusAbsent,
 			})
 			// The table ID is not in the replication means the two sets are
 			// not identical.
@@ -137,10 +137,10 @@ func (b *basicScheduler) Schedule(
 		}
 		if rep.scheduleState == scheduller.SchedulerComponentStatusAbsent {
 			newChangefeeds = append(newChangefeeds, &changefeed{
-				maintainerCaptureID: "",
-				ID:                  model.DefaultChangeFeedID(cf.ID),
-				Info:                &cf,
-				scheduleState:       scheduller.SchedulerComponentStatusAbsent,
+				primary:       "",
+				ID:            model.DefaultChangeFeedID(cf.ID),
+				Info:          &cf,
+				scheduleState: scheduller.SchedulerComponentStatusAbsent,
 			})
 		}
 	}
@@ -235,9 +235,9 @@ func newBurstRemoveTables(
 	changefeeds := make([]RemoveChangefeed, 0, len(rmChangefeeds))
 	for _, cf := range rmChangefeeds {
 		ccf := currentChanfeeds[cf.ID]
-		var captureID model.CaptureID = ccf.maintainerCaptureID
+		var captureID model.CaptureID = ccf.primary
 
-		if ccf.maintainerCaptureID == "" {
+		if ccf.primary == "" {
 			log.Warn("schedulerv3: primary or secondary not found for removed table,"+
 				"this may happen if the capture shutdown",
 				zap.Any("changefeed", cf))
