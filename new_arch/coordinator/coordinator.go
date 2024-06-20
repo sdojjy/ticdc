@@ -27,6 +27,8 @@ import (
 	"github.com/pingcap/tiflow/pkg/upstream"
 	"go.uber.org/zap"
 	"io"
+	"sync"
+	"time"
 )
 
 type coordinatorImpl struct {
@@ -42,6 +44,9 @@ type coordinatorImpl struct {
 
 	version int64
 	epoch   int64
+
+	msgLock sync.RWMutex
+	msgBuf  []*new_arch.Message
 }
 
 func NewCoordinator(
@@ -60,30 +65,30 @@ func NewCoordinator(
 	}
 	_, _ = globalVars.MessageServer.SyncAddHandler(context.Background(), new_arch.GetCoordinatorTopic(),
 		&new_arch.Message{}, func(sender string, messageI interface{}) error {
-			message := messageI.(*new_arch.Message)
-			c.HandleMessage(sender, message)
+			c.msgLock.Lock()
+			c.msgBuf = append(c.msgBuf, messageI.(*new_arch.Message))
+			c.msgLock.Unlock()
 			return nil
 		})
 	c.captureManager = NewCaptureManager(c.selfCaptureID, globalVars.OwnerRevision)
 	return c
 }
 
-func (c *coordinatorImpl) HandleMessage(send string, msg *new_arch.Message) {
-	if msg.AddMaintainerResponse != nil {
-		rsp := msg.AddMaintainerResponse
-		if rsp.Status == maintainerStatusRunning {
-			c.changefeeds[model.DefaultChangeFeedID(rsp.ID)].maintainerStatus = maintainerStatusRunning
+func (c *coordinatorImpl) HandleMessage(msgs []*new_arch.Message) ([]*new_arch.Message, error) {
+	var rsp []*new_arch.Message
+	for _, msg := range msgs {
+		//todo: 和tick 是一个多线程读写处理, 使用 actor system
+		if msg.ChangefeedHeartbeatResponse != nil {
+			c.captureManager.HandleMessage([]*new_arch.Message{msg})
+			r, err := c.changefeedManager.handleMessageHeartbeatResponse(msg.From, msg.ChangefeedHeartbeatResponse)
+			if err != nil {
+				log.Warn("failed to handle message heartbeat", zap.Error(err))
+				return nil, errors.Trace(err)
+			}
+			rsp = append(rsp, r...)
 		}
 	}
-	//todo: 和tick 是一个多线程读写处理, 使用 actor system
-	if msg.ChangefeedHeartbeatResponse != nil {
-		c.captureManager.HandleMessage([]*new_arch.Message{msg})
-		msgs, err := c.changefeedManager.handleMessageHeartbeatResponse(msg.From, msg.ChangefeedHeartbeatResponse)
-		if err != nil {
-			log.Warn("failed to handle message heartbeat", zap.Error(err))
-		}
-		c.sendMsgs(context.Background(), msgs)
-	}
+	return rsp, nil
 }
 
 func (c *coordinatorImpl) SendMessage(ctx context.Context, capture string, topic string, m *new_arch.Message) error {
@@ -185,7 +190,16 @@ func (c *coordinatorImpl) Tick(ctx context.Context,
 		delete(c.changefeeds, changefeedID)
 	}
 
-	msgs := c.captureManager.HandleAliveCaptureUpdate(state.Captures)
+	c.msgLock.Lock()
+	buf := c.msgBuf
+	c.msgBuf = nil
+	c.msgLock.Unlock()
+	msgs, err := c.HandleMessage(buf)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	cmsgs := c.captureManager.HandleAliveCaptureUpdate(state.Captures)
+	msgs = append(msgs, cmsgs...)
 	if err := c.sendMsgs(ctx, msgs); err != nil {
 		return nil, errors.Trace(err)
 	}
@@ -207,6 +221,12 @@ func (c *coordinatorImpl) sendMsgs(ctx context.Context, msgs []*new_arch.Message
 			SenderEpoch:   c.epoch,
 		}
 		client := c.globalVars.MessageRouter.GetClient(msg.To)
+		if client == nil {
+			log.Warn("schedulerv3: no message client found, retry later",
+				zap.String("to", msg.To))
+			time.Sleep(2 * time.Second)
+			client = c.globalVars.MessageRouter.GetClient(msg.To)
+		}
 		_, err := client.TrySendMessage(ctx, new_arch.GetChangefeedMaintainerManagerTopic(), msg)
 		if err != nil {
 			return errors.Trace(err)
@@ -231,9 +251,9 @@ func (c *coordinatorImpl) ScheduleChangefeedMaintainer(ctx context.Context,
 		c.changefeedManager.HandleCaptureChanges(changes.Init, changes.Removed)
 	}
 
-	var changefeeds []model.ChangeFeedInfo
+	var changefeeds []*model.ChangeFeedInfo
 	for _, cf := range state.Changefeeds {
-		changefeeds = append(changefeeds, *cf.Info)
+		changefeeds = append(changefeeds, cf.Info)
 	}
 	tasks := c.schedulerManager.Schedule(
 		changefeeds,

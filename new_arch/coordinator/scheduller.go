@@ -41,7 +41,7 @@ type Callback func()
 type Scheduler interface {
 	Name() string
 	Schedule(
-		currentChangefeeds []model.ChangeFeedInfo,
+		currentChangefeeds []*model.ChangeFeedInfo,
 		aliveCaptures map[model.CaptureID]*CaptureStatus,
 		replications map[model.ChangeFeedID]*changefeed,
 	) []*ScheduleTask
@@ -69,10 +69,10 @@ type MoveChangefeed struct {
 
 // AddChangefeed is a schedule task for adding a changefeed.
 type AddChangefeed struct {
-	Changefeed model.ChangeFeedID
-	CaptureID  model.CaptureID
-	Info       *model.ChangeFeedInfo
-	Status     *model.ChangeFeedStatus
+	ChangeFeedID model.ChangeFeedID
+	CaptureID    model.CaptureID
+	Info         *model.ChangeFeedInfo
+	Status       *model.ChangeFeedStatus
 }
 
 type RemoveChangefeed struct {
@@ -112,7 +112,7 @@ func (b *basicScheduler) Name() string {
 }
 
 func (b *basicScheduler) Schedule(
-	currentChangefeeds []model.ChangeFeedInfo,
+	currentChangefeeds []*model.ChangeFeedInfo,
 	aliveCaptures map[model.CaptureID]*CaptureStatus,
 	replications map[model.ChangeFeedID]*changefeed,
 ) []*ScheduleTask {
@@ -129,8 +129,9 @@ func (b *basicScheduler) Schedule(
 			newChangefeeds = append(newChangefeeds, &changefeed{
 				primary:       "",
 				ID:            model.DefaultChangeFeedID(cf.ID),
-				Info:          &cf,
+				Info:          cf,
 				scheduleState: scheduller.SchedulerComponentStatusAbsent,
+				Captures:      make(map[model.CaptureID]Role),
 			})
 			// The table ID is not in the replication means the two sets are
 			// not identical.
@@ -141,8 +142,9 @@ func (b *basicScheduler) Schedule(
 			newChangefeeds = append(newChangefeeds, &changefeed{
 				primary:       "",
 				ID:            model.DefaultChangeFeedID(cf.ID),
-				Info:          &cf,
+				Info:          cf,
 				scheduleState: scheduller.SchedulerComponentStatusAbsent,
+				Captures:      make(map[model.CaptureID]Role),
 			})
 		}
 	}
@@ -211,10 +213,10 @@ func newBurstAddTables(newChangefeeds []*changefeed, captureIDs []model.CaptureI
 	for _, cf := range newChangefeeds {
 		targetCapture := captureIDs[idx]
 		changefeeds = append(changefeeds, AddChangefeed{
-			Changefeed: cf.ID,
-			CaptureID:  targetCapture,
-			Info:       cf.Info,
-			Status:     cf.Status,
+			ChangeFeedID: cf.ID,
+			CaptureID:    targetCapture,
+			Info:         cf.Info,
+			Status:       cf.Status,
 		})
 		log.Info("schedulerv3: burst add changefeed",
 			zap.String("changefeed", cf.ID.ID),

@@ -43,7 +43,7 @@ func (r *rebalanceScheduler) Name() string {
 }
 
 func (r *rebalanceScheduler) Schedule(
-	currentChangefeeds []model.ChangeFeedInfo,
+	currentChangefeeds []*model.ChangeFeedInfo,
 	aliveCaptures map[model.CaptureID]*CaptureStatus,
 	replications map[model.ChangeFeedID]*changefeed,
 ) []*ScheduleTask {

@@ -61,28 +61,6 @@ type changefeed struct {
 	scheduleState scheduller.SchedulerComponentStatus
 }
 
-const (
-	maintainerStatusPending  = "pending"
-	maintainerStatusStarting = "starting"
-	maintainerStatusRunning  = "running"
-	maintainerStatusStopping = "stopping"
-	maintainerStatusStopped  = "stopped"
-)
-
-func newChangefeed(captureID model.CaptureID, id model.ChangeFeedID,
-	info *model.ChangeFeedInfo,
-	status *model.ChangeFeedStatus,
-	coordinator *coordinatorImpl) *changefeed {
-	return &changefeed{
-		primary:          captureID,
-		ID:               id,
-		Info:             info,
-		Status:           status,
-		maintainerStatus: maintainerStatusPending,
-		coordinator:      coordinator,
-	}
-}
-
 func (c *changefeed) Stop(ctx context.Context) error {
 	err := c.coordinator.SendMessage(ctx, c.primary, new_arch.GetChangefeedMaintainerManagerTopic(),
 		&new_arch.Message{
@@ -93,7 +71,6 @@ func (c *changefeed) Stop(ctx context.Context) error {
 	if err != nil {
 		return errors.Trace(err)
 	}
-	c.maintainerStatus = maintainerStatusStopping
 	return nil
 }
 
@@ -287,9 +264,7 @@ func (c *changefeed) pollOnCommit(
 		}
 		// Secondary has been promoted, retry AddTableRequest.
 		if c.primary == captureID && !c.hasRole(RoleSecondary) {
-			return &new_arch.Message{
-				To: captureID,
-			}, false, nil
+			return c.getAddChangefeedRequest(captureID, false), false, nil
 		}
 
 	case scheduller.ComponentStatusStopped, scheduller.ComponentStatusAbsent:
@@ -346,9 +321,7 @@ func (c *changefeed) pollOnCommit(
 			if c.hasRole(RoleSecondary) {
 				// Original primary is not stopped, ask for stopping.
 				// remove Table
-				return &new_arch.Message{
-					To: captureID,
-				}, false, nil
+				return c.getRemoveChangefeedRequest(captureID), false, nil
 			}
 
 			// There are three cases for empty secondary.

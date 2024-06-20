@@ -34,8 +34,6 @@ type Message struct {
 	RemoveMaintainerRequest   *RemoveMaintainerRequest   `json:"remove_maintainer_request,omitempty"`
 	DispatchMaintainerRequest *DispatchMaintainerRequest `json:"dispatch_maintainer_request,omitempty"`
 
-	AddMaintainerResponse *AddMaintainerResponse `json:"add_maintainer_response,omitempty"`
-
 	AddTableRangeMaintainerRequest  *AddTableRangeMaintainerRequest  `json:"add_table_range_maintainer_request,omitempty"`
 	AddTableRangeMaintainerResponse *AddTableRangeMaintainerResponse `json:"add_table_range_maintainer_response,omitempty"`
 
@@ -76,10 +74,6 @@ type AddMaintainerRequest struct {
 	IsSecondary bool                    `json:"is_secondary,omitempty"`
 }
 
-type AddMaintainerResponse struct {
-	Status string `json:"status,omitempty"`
-	ID     string `json:"id,omitempty"`
-}
 type RemoveMaintainerRequest struct {
 	ID string `json:"id,omitempty"`
 }

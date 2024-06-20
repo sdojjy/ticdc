@@ -106,7 +106,7 @@ func (m *MaintainerManager) HandleMessage(send string, msg *new_arch.Message) {
 
 func (m *MaintainerManager) sendMsg(msgs []*new_arch.Message) {
 	for _, msg := range msgs {
-		msg.From = m.masterID
+		msg.From = m.selfCaptureID
 		msg.To = m.masterID
 		msg.Header = &new_arch.MessageHeader{
 			SenderVersion: 0,
@@ -130,7 +130,7 @@ func (m *MaintainerManager) handleDispatchMaintainerRequest(
 	// make the assumption that all tables are tracked by the agent now.
 	// this should be guaranteed by the caller of the method.
 	if request.AddMaintainerRequest != nil {
-		span := model.ChangeFeedID{ID: request.AddMaintainerRequest.Config.ID}
+		span := model.DefaultChangeFeedID(request.AddMaintainerRequest.Config.ID)
 		task := &dispatchMaintainerTask{
 			ID:        span,
 			IsRemove:  false,
@@ -145,8 +145,8 @@ func (m *MaintainerManager) handleDispatchMaintainerRequest(
 		}
 		cf.injectDispatchTableTask(task)
 	} else if request.RemoveMaintainerRequest != nil {
-		span := model.ChangeFeedID{ID: request.AddMaintainerRequest.Config.ID}
-		cf, ok := m.maintainers[request.AddMaintainerRequest.Config.ID]
+		span := model.DefaultChangeFeedID(request.RemoveMaintainerRequest.ID)
+		cf, ok := m.maintainers[request.RemoveMaintainerRequest.ID]
 		if !ok {
 			log.Warn("schedulerv3: agent ignore remove table request, "+
 				"since the table not found",
@@ -199,6 +199,11 @@ func (m *MaintainerManager) handleMessageHeartbeat() ([]*new_arch.Message, error
 
 func (m *MaintainerManager) SendMessage(ctx context.Context, capture string, topic string, msg *new_arch.Message) error {
 	client := m.globalVars.MessageRouter.GetClient(capture)
+	if client == nil {
+		log.Warn("schedulerv3: no message client found, retry later",
+			zap.String("to", msg.To))
+		return nil
+	}
 	_, err := client.TrySendMessage(ctx, topic, msg)
 	return errors.Trace(err)
 }

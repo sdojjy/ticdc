@@ -66,7 +66,7 @@ func (d *drainCaptureScheduler) setTarget(target model.CaptureID) bool {
 }
 
 func (d *drainCaptureScheduler) Schedule(
-	currentChangefeeds []model.ChangeFeedInfo,
+	currentChangefeeds []*model.ChangeFeedInfo,
 	aliveCaptures map[model.CaptureID]*CaptureStatus,
 	replications map[model.ChangeFeedID]*changefeed,
 ) []*ScheduleTask {

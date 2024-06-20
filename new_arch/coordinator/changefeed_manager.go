@@ -75,7 +75,8 @@ func (r *ChangefeedManager) HandleCaptureChanges(
 		for _, cfs := range init {
 			for _, c := range cfs {
 				cf := &changefeed{
-					ID: c.ChangefeedID,
+					ID:       c.ChangefeedID,
+					Captures: make(map[model.CaptureID]Role),
 				}
 				r.changefeeds[cf.ID] = cf
 			}
@@ -149,7 +150,7 @@ func (r *ChangefeedManager) HandleTasks(tasks []*ScheduleTask) ([]*new_arch.Mess
 
 		var changefeedID model.ChangeFeedID
 		if task.AddChangefeed != nil {
-			changefeedID = task.AddChangefeed.Changefeed
+			changefeedID = task.AddChangefeed.ChangeFeedID
 		} else if task.RemoveChangefeed != nil {
 			changefeedID = task.RemoveChangefeed.Changefeed
 		} else if task.MoveChangefeed != nil {
@@ -176,7 +177,7 @@ func (r *ChangefeedManager) HandleTasks(tasks []*ScheduleTask) ([]*new_arch.Mess
 		} else if task.RemoveChangefeed != nil {
 			msgs, err = r.handleRemoveTableTask(task.RemoveChangefeed)
 		} else if task.MoveChangefeed != nil {
-			msgs, err = r.handleRemoveTableTask(task.RemoveChangefeed)
+			msgs, err = r.handleMoveChangefeedTask(task.MoveChangefeed)
 		}
 		if err != nil {
 			return nil, errors.Trace(err)
@@ -212,7 +213,7 @@ func (r *ChangefeedManager) handleBurstBalanceTasks(
 	sentMsgs := make([]*new_arch.Message, 0, len(task.AddChangefeeds))
 	for i := range task.AddChangefeeds {
 		addTable := task.AddChangefeeds[i]
-		if _, ok := r.runningTasks[addTable.Changefeed]; ok {
+		if _, ok := r.runningTasks[addTable.ChangeFeedID]; ok {
 			// Skip add table if the table is already running a task.
 			continue
 		}
@@ -222,7 +223,7 @@ func (r *ChangefeedManager) handleBurstBalanceTasks(
 		}
 		sentMsgs = append(sentMsgs, msgs...)
 		// Just for place holding. it's in adding status, so we can filter the new task using running tasks
-		r.runningTasks[addTable.Changefeed] = &ScheduleTask{}
+		r.runningTasks[addTable.ChangeFeedID] = &ScheduleTask{}
 	}
 	for i := range task.RemoveChangefeeds {
 		removeTable := task.RemoveChangefeeds[i]
@@ -278,16 +279,15 @@ func (r *ChangefeedManager) handleMoveChangefeedTask(
 func (r *ChangefeedManager) handleAddTableTask(
 	task *AddChangefeed,
 ) ([]*new_arch.Message, error) {
-	table, ok := r.changefeeds[task.Changefeed]
+	table, ok := r.changefeeds[task.ChangeFeedID]
 	if !ok {
 		table = &changefeed{
-			primary:  task.CaptureID,
 			Captures: make(map[model.CaptureID]Role),
-			ID:       task.Changefeed,
+			ID:       task.ChangeFeedID,
 			Info:     task.Info,
 			Status:   task.Status,
 		}
-		r.changefeeds[task.Changefeed] = table
+		r.changefeeds[task.ChangeFeedID] = table
 	}
 	return table.handleAdd(task.CaptureID)
 }

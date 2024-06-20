@@ -173,6 +173,7 @@ func (c *CaptureManager) HandleAliveCaptureUpdate(
 			// 发送 bootstrap 消息
 			msgs = append(msgs, &new_arch.Message{
 				To:               id,
+				From:             c.ownerID,
 				BootstrapRequest: &new_arch.BootstrapRequest{},
 			})
 		}

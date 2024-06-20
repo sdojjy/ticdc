@@ -57,7 +57,7 @@ func (b *balanceScheduler) Name() string {
 }
 
 func (b *balanceScheduler) Schedule(
-	currentChangefeeds []model.ChangeFeedInfo,
+	currentChangefeeds []*model.ChangeFeedInfo,
 	aliveCaptures map[model.CaptureID]*CaptureStatus,
 	replications map[model.ChangeFeedID]*changefeed,
 ) []*ScheduleTask {

@@ -52,7 +52,7 @@ func NewSchedulerManager(cfg *config.SchedulerConfig) *Manager {
 
 // Schedule generates schedule tasks based on the inputs.
 func (sm *Manager) Schedule(
-	currentChangefeeds []model.ChangeFeedInfo,
+	currentChangefeeds []*model.ChangeFeedInfo,
 	aliveCaptures map[model.CaptureID]*CaptureStatus,
 	replications map[model.ChangeFeedID]*changefeed,
 	runTasking map[model.ChangeFeedID]*ScheduleTask,

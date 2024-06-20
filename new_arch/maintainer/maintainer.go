@@ -169,12 +169,14 @@ func (m *Maintainer) finishAddChangefeed() bool {
 }
 
 func (m *Maintainer) CloseChangefeed() {
-	if m.componentStatus == scheduller.ComponentStatusStopping {
+	if m.componentStatus != scheduller.ComponentStatusStopping &&
+		m.componentStatus != scheduller.ComponentStatusStopped {
 		m.componentStatus = scheduller.ComponentStatusStopping
 		// async close
 		go func() {
-			m.changefeed.Close(context.Background())
+			//m.changefeed.Close(context.Background())
 			m.componentStatus = scheduller.ComponentStatusStopped
+
 		}()
 	}
 }
@@ -278,11 +280,13 @@ func (m *Maintainer) handleRemoveTableTask() error {
 			//	status.State = tablepb.TableStateStopping
 			//	return newRemoveTableResponseMessage(status)
 			//}
-			//t.task = nil
+			log.Warn("schedulerv3: remove table, but table is stopping")
+			m.task = nil
 			//status := t.getTableSpanStatus(false)
 			//status.State = tablepb.TableStateStopped
 			//status.Checkpoint.CheckpointTs = checkpointTs
 			//return newRemoveTableResponseMessage(status)
+			return nil
 		case scheduller.ComponentStatusPreparing,
 			scheduller.ComponentStatusPrepared,
 			scheduller.ComponentStatusWorking:

@@ -61,7 +61,7 @@ func (m *moveTableScheduler) addTask(changefeedID model.ChangeFeedID, target mod
 }
 
 func (m *moveTableScheduler) Schedule(
-	currentChangefeeds []model.ChangeFeedInfo,
+	currentChangefeeds []*model.ChangeFeedInfo,
 	aliveCaptures map[model.CaptureID]*CaptureStatus,
 	replications map[model.ChangeFeedID]*changefeed,
 ) []*ScheduleTask {
@@ -81,7 +81,7 @@ func (m *moveTableScheduler) Schedule(
 		return result
 	}
 
-	allSpans := make(map[string]model.ChangeFeedInfo)
+	allSpans := make(map[string]*model.ChangeFeedInfo)
 	for _, span := range currentChangefeeds {
 		allSpans[span.ID] = span
 	}
