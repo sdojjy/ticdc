@@ -190,6 +190,8 @@ func (c *coordinatorImpl) Tick(ctx context.Context,
 		delete(c.changefeeds, changefeedID)
 	}
 
+	c.changefeedManager.allChangefeedConfig = state.Changefeeds
+
 	c.msgLock.Lock()
 	buf := c.msgBuf
 	c.msgBuf = nil

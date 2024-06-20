@@ -17,6 +17,7 @@ import (
 	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/new_arch"
+	"github.com/pingcap/tiflow/new_arch/scheduler"
 	"go.uber.org/zap"
 )
 
@@ -91,7 +92,8 @@ func (c *CaptureStatus) handleHeartbeatResponse(
 	}
 	for _, cf := range resp.Changefeeds {
 		c.Changefeeds = append(c.Changefeeds, &ChangefeedStatus{
-			ChangefeedID: cf.ID,
+			ChangefeedID:    cf.ID,
+			ComponentStatus: scheduler.ComponentStatus(cf.ComponentStatus),
 		})
 	}
 }

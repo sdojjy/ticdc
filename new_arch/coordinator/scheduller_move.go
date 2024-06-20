@@ -14,7 +14,7 @@
 package coordinator
 
 import (
-	"github.com/pingcap/tiflow/new_arch/scheduller"
+	"github.com/pingcap/tiflow/new_arch/scheduler"
 	"sync"
 
 	"github.com/pingcap/log"
@@ -127,7 +127,7 @@ func (m *moveTableScheduler) Schedule(
 			continue
 		}
 		// only move replicating table.
-		if rep.scheduleState != scheduller.SchedulerComponentStatusWorking {
+		if rep.scheduleState != scheduler.SchedulerComponentStatusWorking {
 			log.Info("schedulerv3: move table ignored, since the table is not replicating now",
 				zap.String("changefeed", changefeedID.ID),
 				zap.String("captureID", task.MoveChangefeed.DestCapture))

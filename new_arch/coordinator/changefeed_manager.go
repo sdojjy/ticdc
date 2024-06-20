@@ -17,8 +17,9 @@ import (
 	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/new_arch"
-	"github.com/pingcap/tiflow/new_arch/scheduller"
+	"github.com/pingcap/tiflow/new_arch/scheduler"
 	"github.com/pingcap/tiflow/pkg/errors"
+	"github.com/pingcap/tiflow/pkg/orchestrator"
 	"go.uber.org/zap"
 )
 
@@ -27,6 +28,8 @@ type ChangefeedManager struct {
 	changefeeds  map[model.ChangeFeedID]*changefeed
 
 	maxTaskConcurrency int
+
+	allChangefeedConfig map[model.ChangeFeedID]*orchestrator.ChangefeedReactorState
 }
 
 func NewChangefeedManager(maxTaskConcurrency int) *ChangefeedManager {
@@ -48,17 +51,16 @@ func (r *ChangefeedManager) HandleCaptureChanges(
 			log.Panic("schedulerv3: init again",
 				zap.Any("init", init), zap.Int("tablesCount", len(r.changefeeds)))
 		}
-		//spanStatusMap := spanz.NewBtreeMap[map[model.CaptureID]*ChangefeedStatus]()
-		//for captureID, spans := range init {
-		//	for i := range spans {
-		//		table := spans[i]
-		//		if _, ok := spanStatusMap.Get(table.Span); !ok {
-		//			spanStatusMap.ReplaceOrInsert(
-		//				table.Span, map[model.CaptureID]*ChangefeedStatus{})
-		//		}
-		//		spanStatusMap.GetV(table.Span)[captureID] = &table
-		//	}
-		//}
+		spanStatusMap := make(map[model.ChangeFeedID]map[model.CaptureID]*ChangefeedStatus)
+		for captureID, spans := range init {
+			for i := range spans {
+				table := spans[i]
+				if _, ok := spanStatusMap[table.ChangefeedID]; !ok {
+					spanStatusMap[table.ChangefeedID] = map[model.CaptureID]*ChangefeedStatus{}
+				}
+				spanStatusMap[table.ChangefeedID][captureID] = table
+			}
+		}
 		//var err error
 		//spanStatusMap.Ascend(func(span tablepb.Span, status map[string]*tablepb.TableStatus) bool {
 		//	table, err1 := NewReplicationSet(span, checkpointTs, status, r.changefeedID)
@@ -74,9 +76,11 @@ func (r *ChangefeedManager) HandleCaptureChanges(
 		//}
 		for _, cfs := range init {
 			for _, c := range cfs {
-				cf := &changefeed{
-					ID:       c.ChangefeedID,
-					Captures: make(map[model.CaptureID]Role),
+				cf, err := NewChangefeed(c.ChangefeedID, spanStatusMap[c.ChangefeedID],
+					r.allChangefeedConfig[c.ChangefeedID].Info,
+					r.allChangefeedConfig[c.ChangefeedID].Status)
+				if err != nil {
+					return nil, err
 				}
 				r.changefeeds[cf.ID] = cf
 			}
@@ -88,7 +92,7 @@ func (r *ChangefeedManager) HandleCaptureChanges(
 		for cfID, cf := range r.changefeeds {
 			for captureID := range removed {
 				msgs, affected, err1 := cf.handleCaptureShutdown(captureID)
-				if err != nil {
+				if err1 != nil {
 					err = errors.Trace(err1)
 					break
 				}
@@ -113,7 +117,7 @@ func (r *ChangefeedManager) HandleTasks(tasks []*ScheduleTask) ([]*new_arch.Mess
 		if cf, ok := r.changefeeds[cfID]; ok {
 			// If table is back to Replicating or Removed,
 			// the running task is finished.
-			if cf.scheduleState == scheduller.SchedulerComponentStatusWorking || cf.hasRemoved() {
+			if cf.scheduleState == scheduler.SchedulerComponentStatusWorking || cf.hasRemoved() {
 				toBeDeleted = append(toBeDeleted, cfID)
 			}
 		} else {
@@ -305,7 +309,7 @@ func (r *ChangefeedManager) handleMessageHeartbeatResponse(
 			continue
 		}
 		msgs, err := table.handleTableStatus(from, &ChangefeedStatus{
-			ComponentStatus: scheduller.ComponentStatus(status.ComponentStatus),
+			ComponentStatus: scheduler.ComponentStatus(status.ComponentStatus),
 			ChangefeedID:    status.ID,
 		})
 		if err != nil {

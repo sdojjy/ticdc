@@ -22,7 +22,7 @@ import (
 	"github.com/pingcap/tiflow/cdc/owner"
 	"github.com/pingcap/tiflow/cdc/vars"
 	"github.com/pingcap/tiflow/new_arch"
-	"github.com/pingcap/tiflow/new_arch/scheduller"
+	"github.com/pingcap/tiflow/new_arch/scheduler"
 	"github.com/pingcap/tiflow/pkg/config"
 	"github.com/pingcap/tiflow/pkg/errors"
 	pfilter "github.com/pingcap/tiflow/pkg/filter"
@@ -41,7 +41,7 @@ type Maintainer struct {
 
 	task *dispatchMaintainerTask
 
-	componentStatus scheduller.ComponentStatus
+	componentStatus scheduler.ComponentStatus
 	changefeed      owner.Changefeed
 }
 
@@ -73,7 +73,7 @@ func NewMaintainer(
 		ID:              ID,
 		info:            info,
 		status:          status,
-		componentStatus: scheduller.ComponentStatusAbsent,
+		componentStatus: scheduler.ComponentStatusAbsent,
 	}
 	return m
 }
@@ -142,7 +142,7 @@ func (m *Maintainer) ScheduleTableRangeManager(ctx context.Context) error {
 
 	return nil
 }
-func (m *Maintainer) getAndUpdateTableSpanState(old scheduller.ComponentStatus) (scheduller.ComponentStatus, bool) {
+func (m *Maintainer) getAndUpdateTableSpanState(old scheduler.ComponentStatus) (scheduler.ComponentStatus, bool) {
 	return m.componentStatus, m.componentStatus != old
 }
 
@@ -155,34 +155,33 @@ func (m *Maintainer) initChangefeed() (bool, error) {
 	m.changefeed = owner.NewChangefeed(m.ID, m.info, m.status, manager, up, m.cfg, m.globalVars)
 	//check change initialization ?
 	//m.changefeed.initial =
-	//m.componentStatus = scheduller.ComponentStatusPreparing
+	//m.componentStatus = scheduler.ComponentStatusPreparing
 
-	m.componentStatus = scheduller.ComponentStatusPrepared
+	m.componentStatus = scheduler.ComponentStatusPrepared
 	return true, nil
 }
 
 func (m *Maintainer) finishAddChangefeed() bool {
-	m.componentStatus = scheduller.ComponentStatusWorking
+	m.componentStatus = scheduler.ComponentStatusWorking
 	//start to tick
 	//m.changefeed.Tick()
 	return true
 }
 
 func (m *Maintainer) CloseChangefeed() {
-	if m.componentStatus != scheduller.ComponentStatusStopping &&
-		m.componentStatus != scheduller.ComponentStatusStopped {
-		m.componentStatus = scheduller.ComponentStatusStopping
+	if m.componentStatus != scheduler.ComponentStatusStopping &&
+		m.componentStatus != scheduler.ComponentStatusStopped {
+		m.componentStatus = scheduler.ComponentStatusStopping
 		// async close
 		go func() {
 			//m.changefeed.Close(context.Background())
-			m.componentStatus = scheduller.ComponentStatusStopped
-
+			m.componentStatus = scheduler.ComponentStatusStopped
 		}()
 	}
 }
 
 func (m *Maintainer) isRemoveFinished() bool {
-	m.componentStatus = scheduller.ComponentStatusWorking
+	m.componentStatus = scheduler.ComponentStatusWorking
 	//start to tick
 	//m.changefeed.Tick()
 	return true
@@ -193,7 +192,7 @@ func (m *Maintainer) handleAddTableTask() error {
 	changed := true
 	for changed {
 		switch state {
-		case scheduller.ComponentStatusAbsent:
+		case scheduler.ComponentStatusAbsent:
 			done, err := m.initChangefeed()
 			if err != nil || !done {
 				log.Warn("schedulerv3: agent add table failed",
@@ -202,11 +201,11 @@ func (m *Maintainer) handleAddTableTask() error {
 				return errors.Trace(err)
 			}
 			state, changed = m.getAndUpdateTableSpanState(m.componentStatus)
-		case scheduller.ComponentStatusWorking:
+		case scheduler.ComponentStatusWorking:
 			log.Info("schedulerv3: table is replicating")
 			m.task = nil
 			return nil
-		case scheduller.ComponentStatusPrepared:
+		case scheduler.ComponentStatusPrepared:
 			if m.task.IsPrepare {
 				// `prepared` is a stable state, if the task was to prepare the table.
 				log.Info("schedulerv3: table is prepared",
@@ -237,7 +236,7 @@ func (m *Maintainer) handleAddTableTask() error {
 			}
 			//state, changed = t.getAndUpdateTableSpanState()
 			return nil
-		case scheduller.ComponentStatusPreparing:
+		case scheduler.ComponentStatusPreparing:
 			// `preparing` is not stable state and would last a long time,
 			// it's no need to return such a state, to make the coordinator become burdensome.
 			//done := t.executor.IsAddTableSpanFinished(t.task.Span, t.task.IsPrepare)
@@ -249,10 +248,12 @@ func (m *Maintainer) handleAddTableTask() error {
 			//	zap.String("namespace", t.changefeedID.Namespace),
 			//	zap.String("changefeed", t.changefeedID.ID),
 			//	zap.Any("tableSpan", t.span), zap.Stringer("state", state))
-		case scheduller.ComponentStatusStopping,
-			scheduller.ComponentStatusStopped:
+			return nil
+		case scheduler.ComponentStatusStopping,
+			scheduler.ComponentStatusStopped:
 			log.Warn("schedulerv3: ignore add table")
 			m.task = nil
+			return nil
 		default:
 			log.Panic("schedulerv3: unknown table state")
 		}
@@ -265,12 +266,12 @@ func (m *Maintainer) handleRemoveTableTask() error {
 	changed := true
 	for changed {
 		switch state {
-		case scheduller.ComponentStatusAbsent:
+		case scheduler.ComponentStatusAbsent:
 			log.Warn("schedulerv3: remove table, but table is absent")
 			m.task = nil
 			return nil
-		case scheduller.ComponentStatusStopping, // stopping now is useless
-			scheduller.ComponentStatusStopped:
+		case scheduler.ComponentStatusStopping, // stopping now is useless
+			scheduler.ComponentStatusStopped:
 			// release table resource, and get the latest checkpoint
 			// this will let the table span become `absent`
 			//checkpointTs, done := t.executor.IsRemoveTableSpanFinished(t.span)
@@ -287,12 +288,11 @@ func (m *Maintainer) handleRemoveTableTask() error {
 			//status.Checkpoint.CheckpointTs = checkpointTs
 			//return newRemoveTableResponseMessage(status)
 			return nil
-		case scheduller.ComponentStatusPreparing,
-			scheduller.ComponentStatusPrepared,
-			scheduller.ComponentStatusWorking:
+		case scheduler.ComponentStatusPreparing,
+			scheduler.ComponentStatusPrepared,
+			scheduler.ComponentStatusWorking:
 			m.CloseChangefeed()
 			state, changed = m.getAndUpdateTableSpanState(m.componentStatus)
-			return nil
 		default:
 			log.Panic("schedulerv3: unknown table state")
 		}

@@ -20,7 +20,7 @@ import (
 	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/new_arch"
-	"github.com/pingcap/tiflow/new_arch/scheduller"
+	"github.com/pingcap/tiflow/new_arch/scheduler"
 	"github.com/pingcap/tiflow/pkg/errors"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -58,7 +58,103 @@ type changefeed struct {
 	maintainerStatus string
 	coordinator      *coordinatorImpl
 
-	scheduleState scheduller.SchedulerComponentStatus
+	scheduleState scheduler.SchedulerComponentStatus
+}
+
+// NewChangefeed returns a new replication set.
+func NewChangefeed(
+	id model.ChangeFeedID,
+	tableStatus map[model.CaptureID]*ChangefeedStatus,
+	info *model.ChangeFeedInfo,
+	status *model.ChangeFeedStatus,
+) (*changefeed, error) {
+	r := &changefeed{
+		ID:       id,
+		Captures: make(map[string]Role),
+		Info:     info,
+		Status:   status,
+	}
+	// Count of captures that is in Stopping states.
+	stoppingCount := 0
+	committed := false
+	for captureID, table := range tableStatus {
+		if r.ID != table.ChangefeedID {
+			return nil, errors.New("schedulerv3: table id inconsistent")
+		}
+		r.update(table)
+
+		switch table.ComponentStatus {
+		case scheduler.ComponentStatusWorking:
+			if len(r.primary) != 0 {
+				return nil, errors.New("schedulerv3: multiple primary")
+			}
+			// Recognize primary if it's table is in replicating state.
+			err := r.setCapture(captureID, RoleSecondary)
+			if err != nil {
+				return nil, errors.Trace(err)
+			}
+			err = r.promoteSecondary(captureID)
+			if err != nil {
+				return nil, errors.Trace(err)
+			}
+		case scheduler.ComponentStatusPreparing:
+			// Recognize secondary if it's table is in preparing state.
+			err := r.setCapture(captureID, RoleSecondary)
+			if err != nil {
+				return nil, errors.Trace(err)
+			}
+		case scheduler.ComponentStatusPrepared:
+			// Recognize secondary and Commit state if it's table is in prepared state.
+			committed = true
+			err := r.setCapture(captureID, RoleSecondary)
+			if err != nil {
+				return nil, errors.Trace(err)
+			}
+		case scheduler.ComponentStatusStopping:
+			// The capture is stopping the table. It is possible that the
+			// capture is primary, and is still replicating data to downstream.
+			// We need to wait its state becomes Stopped or Absent before
+			// proceeding further scheduling.
+			log.Warn("schedulerv3: found a stopping capture during initializing",
+				zap.Any("replicationSet", r),
+				zap.Any("status", tableStatus))
+			err := r.setCapture(captureID, RoleUndetermined)
+			if err != nil {
+				return nil, errors.Trace(err)
+			}
+			stoppingCount++
+		case scheduler.ComponentStatusAbsent,
+			scheduler.ComponentStatusStopped:
+			// Ignore stop state.
+		default:
+			log.Warn("schedulerv3: unknown table state",
+				zap.Any("replicationSet", r),
+				zap.Any("status", tableStatus))
+		}
+	}
+
+	// Build state from primary, secondary and captures.
+	if len(r.primary) != 0 {
+		r.scheduleState = scheduler.SchedulerComponentStatusWorking
+	}
+	// Move table or add table is in-progress.
+	if r.hasRole(RoleSecondary) {
+		r.scheduleState = scheduler.SchedulerComponentStatusPrepare
+	}
+	// Move table or add table is committed.
+	if committed {
+		r.scheduleState = scheduler.SchedulerComponentStatusCommit
+	}
+	if len(r.Captures) == 0 {
+		r.scheduleState = scheduler.SchedulerComponentStatusAbsent
+	}
+	if len(r.Captures) == stoppingCount {
+		r.scheduleState = scheduler.SchedulerComponentStatusRemoving
+	}
+	log.Info("schedulerv3: initialize replication set",
+		zap.Any("replicationSet", r))
+
+	return r, nil
 }
 
 func (c *changefeed) Stop(ctx context.Context) error {
@@ -85,25 +181,25 @@ func (c *changefeed) EmitCheckpointTs(ctx context.Context, uint642 uint64) error
 func (c *changefeed) hasRemoved() bool {
 	// It has been removed successfully if it's state is Removing,
 	// and there is no capture has it.
-	return c.scheduleState == scheduller.SchedulerComponentStatusRemoving &&
+	return c.scheduleState == scheduler.SchedulerComponentStatusRemoving &&
 		len(c.Captures) == 0
 }
 
 func (c *changefeed) pollOnAbsent(
 	input *ChangefeedStatus, captureID model.CaptureID) (bool, error) {
 	switch input.ComponentStatus {
-	case scheduller.ComponentStatusAbsent:
-		c.scheduleState = scheduller.SchedulerComponentStatusPrepare
+	case scheduler.ComponentStatusAbsent:
+		c.scheduleState = scheduler.SchedulerComponentStatusPrepare
 		err := c.setCapture(captureID, RoleSecondary)
 		return true, errors.Trace(err)
 
-	case scheduller.ComponentStatusStopped:
+	case scheduler.ComponentStatusStopped:
 		// Ignore stopped table state as a capture may shutdown unexpectedly.
 		return false, nil
-	case scheduller.ComponentStatusPreparing,
-		scheduller.ComponentStatusPrepared,
-		scheduller.ComponentStatusWorking,
-		scheduller.ComponentStatusStopping:
+	case scheduler.ComponentStatusPreparing,
+		scheduler.ComponentStatusPrepared,
+		scheduler.ComponentStatusWorking,
+		scheduler.ComponentStatusStopping:
 	}
 	log.Warn("schedulerv3: ignore input, unexpected replication set state",
 		zap.String("changefeed", c.ID.ID),
@@ -114,27 +210,27 @@ func (c *changefeed) pollOnAbsent(
 func (c *changefeed) pollOnPrepare(
 	input *ChangefeedStatus, captureID model.CaptureID) (*new_arch.Message, bool, error) {
 	switch input.ComponentStatus {
-	case scheduller.ComponentStatusAbsent:
+	case scheduler.ComponentStatusAbsent:
 		if c.isInRole(captureID, RoleSecondary) {
 			return c.getAddChangefeedRequest(captureID, true), false, nil
 		}
-	case scheduller.ComponentStatusPreparing:
+	case scheduler.ComponentStatusPreparing:
 		if c.isInRole(captureID, RoleSecondary) {
 			// Ignore secondary Preparing, it may take a long time.
 			return nil, false, nil
 		}
-	case scheduller.ComponentStatusPrepared:
+	case scheduler.ComponentStatusPrepared:
 		if c.isInRole(captureID, RoleSecondary) {
 			// Secondary is prepared, transit to Commit state.
-			c.scheduleState = scheduller.SchedulerComponentStatusCommit
+			c.scheduleState = scheduler.SchedulerComponentStatusCommit
 			return nil, true, nil
 		}
-	case scheduller.ComponentStatusWorking:
+	case scheduler.ComponentStatusWorking:
 		if c.primary == captureID {
 			c.update(input)
 			return nil, false, nil
 		}
-	case scheduller.ComponentStatusStopping, scheduller.ComponentStatusStopped:
+	case scheduler.ComponentStatusStopping, scheduler.ComponentStatusStopped:
 		if c.primary == captureID {
 			// Primary is stopped, but we may still has secondary.
 			// Clear primary and promote secondary when it's prepared.
@@ -157,11 +253,11 @@ func (c *changefeed) pollOnPrepare(
 			if c.primary != "" {
 				// Secondary is stopped, and we still has primary.
 				// Transit to Replicating.
-				c.scheduleState = scheduller.SchedulerComponentStatusWorking
+				c.scheduleState = scheduler.SchedulerComponentStatusWorking
 			} else {
 				// Secondary is stopped, and we do not has primary.
 				// Transit to Absent.
-				c.scheduleState = scheduller.SchedulerComponentStatusAbsent
+				c.scheduleState = scheduler.SchedulerComponentStatusAbsent
 			}
 			return nil, true, nil
 		}
@@ -177,18 +273,18 @@ func (c *changefeed) pollOnPrepare(
 func (c *changefeed) pollOnReplicating(
 	input *ChangefeedStatus, captureID model.CaptureID) (*new_arch.Message, bool, error) {
 	switch input.ComponentStatus {
-	case scheduller.ComponentStatusWorking:
+	case scheduler.ComponentStatusWorking:
 		if c.primary == captureID {
 			c.update(input)
 			return nil, false, nil
 		}
 		return nil, false, errors.New("schedulerv3: multiple primary")
 
-	case scheduller.ComponentStatusAbsent:
-	case scheduller.ComponentStatusPreparing:
-	case scheduller.ComponentStatusPrepared:
-	case scheduller.ComponentStatusStopping:
-	case scheduller.ComponentStatusStopped:
+	case scheduler.ComponentStatusAbsent:
+	case scheduler.ComponentStatusPreparing:
+	case scheduler.ComponentStatusPrepared:
+	case scheduler.ComponentStatusStopping:
+	case scheduler.ComponentStatusStopped:
 		if c.primary == captureID {
 			c.update(input)
 			// Primary is stopped, but we still has secondary.
@@ -198,7 +294,7 @@ func (c *changefeed) pollOnReplicating(
 				zap.String("captureID", captureID),
 				zap.Any("replicationSet", c))
 			c.clearPrimary()
-			c.scheduleState = scheduller.SchedulerComponentStatusAbsent
+			c.scheduleState = scheduler.SchedulerComponentStatusAbsent
 			return nil, true, nil
 		}
 	}
@@ -235,7 +331,7 @@ func (c *changefeed) getRemoveChangefeedRequest(capture string) *new_arch.Messag
 func (c *changefeed) pollOnCommit(
 	input *ChangefeedStatus, captureID model.CaptureID) (*new_arch.Message, bool, error) {
 	switch input.ComponentStatus {
-	case scheduller.ComponentStatusPrepared:
+	case scheduler.ComponentStatusPrepared:
 		if c.isInRole(captureID, RoleSecondary) {
 			if c.primary != "" {
 				// Secondary capture is prepared and waiting for stopping primary.
@@ -267,7 +363,7 @@ func (c *changefeed) pollOnCommit(
 			return c.getAddChangefeedRequest(captureID, false), false, nil
 		}
 
-	case scheduller.ComponentStatusStopped, scheduller.ComponentStatusAbsent:
+	case scheduler.ComponentStatusStopped, scheduler.ComponentStatusAbsent:
 		if c.primary == captureID {
 			// 停止前上报的状态，需要做最后一次处理
 			c.update(input)
@@ -279,7 +375,7 @@ func (c *changefeed) pollOnCommit(
 					zap.Any("tableState", input),
 					zap.String("captureID", captureID),
 					zap.Any("replicationSet", c))
-				c.scheduleState = scheduller.SchedulerComponentStatusAbsent
+				c.scheduleState = scheduler.SchedulerComponentStatusAbsent
 				return nil, true, nil
 			}
 			// Primary is stopped, promote secondary to primary.
@@ -304,7 +400,7 @@ func (c *changefeed) pollOnCommit(
 			}
 			if c.primary == "" {
 				// If there is no primary, transit to Absent.
-				c.scheduleState = scheduller.SchedulerComponentStatusAbsent
+				c.scheduleState = scheduler.SchedulerComponentStatusAbsent
 			}
 			return nil, true, nil
 		} else if c.isInRole(captureID, RoleUndetermined) {
@@ -315,7 +411,7 @@ func (c *changefeed) pollOnCommit(
 			return nil, false, errors.Trace(err)
 		}
 
-	case scheduller.ComponentStatusWorking:
+	case scheduler.ComponentStatusWorking:
 		if c.primary == captureID {
 			c.update(input)
 			if c.hasRole(RoleSecondary) {
@@ -335,12 +431,12 @@ func (c *changefeed) pollOnCommit(
 			//    before the original primary receives RemoveTable request.
 			//    Transit to Replicating, and wait for the next table state of
 			//    the primary, Stopping or Stopped.
-			c.scheduleState = scheduller.SchedulerComponentStatusWorking
+			c.scheduleState = scheduler.SchedulerComponentStatusWorking
 			return nil, true, nil
 		}
 		return nil, false, errors.New("schedulerv3: multiple primary")
 
-	case scheduller.ComponentStatusStopping:
+	case scheduler.ComponentStatusStopping:
 		if c.primary == captureID && c.hasRole(RoleSecondary) {
 			c.update(input)
 			return nil, false, nil
@@ -350,7 +446,7 @@ func (c *changefeed) pollOnCommit(
 			return nil, false, nil
 		}
 
-	case scheduller.ComponentStatusPreparing:
+	case scheduler.ComponentStatusPreparing:
 	}
 	log.Warn("schedulerv3: ignore input, unexpected replication set state",
 		zap.Any("tableState", input))
@@ -360,11 +456,11 @@ func (c *changefeed) pollOnCommit(
 func (c *changefeed) pollOnRemoving(
 	input *ChangefeedStatus, captureID model.CaptureID) (*new_arch.Message, bool, error) {
 	switch input.ComponentStatus {
-	case scheduller.ComponentStatusPreparing,
-		scheduller.ComponentStatusPrepared,
-		scheduller.ComponentStatusWorking:
+	case scheduler.ComponentStatusPreparing,
+		scheduler.ComponentStatusPrepared,
+		scheduler.ComponentStatusWorking:
 		return c.getRemoveChangefeedRequest(captureID), false, nil
-	case scheduller.ComponentStatusAbsent, scheduller.ComponentStatusStopped:
+	case scheduler.ComponentStatusAbsent, scheduler.ComponentStatusStopped:
 		var err error
 		if c.primary == captureID {
 			c.clearPrimary()
@@ -380,7 +476,7 @@ func (c *changefeed) pollOnRemoving(
 				zap.Error(err))
 		}
 		return nil, false, nil
-	case scheduller.ComponentStatusStopping:
+	case scheduler.ComponentStatusStopping:
 		return nil, false, nil
 	}
 	log.Warn("schedulerv3: ignore input, unexpected replication set state",
@@ -395,7 +491,7 @@ func (c *changefeed) update(
 }
 
 type ChangefeedStatus struct {
-	ComponentStatus scheduller.ComponentStatus
+	ComponentStatus scheduler.ComponentStatus
 	ChangefeedID    model.ChangeFeedID
 }
 
@@ -421,15 +517,15 @@ func (c *changefeed) poll(
 		oldState := c.scheduleState
 		var msg *new_arch.Message
 		switch c.scheduleState {
-		case scheduller.SchedulerComponentStatusAbsent:
+		case scheduler.SchedulerComponentStatusAbsent:
 			stateChanged, err = c.pollOnAbsent(input, captureID)
-		case scheduller.SchedulerComponentStatusPrepare:
+		case scheduler.SchedulerComponentStatusPrepare:
 			msg, stateChanged, err = c.pollOnPrepare(input, captureID)
-		case scheduller.SchedulerComponentStatusCommit:
+		case scheduler.SchedulerComponentStatusCommit:
 			msg, stateChanged, err = c.pollOnCommit(input, captureID)
-		case scheduller.SchedulerComponentStatusWorking:
+		case scheduler.SchedulerComponentStatusWorking:
 			msg, stateChanged, err = c.pollOnReplicating(input, captureID)
-		case scheduller.SchedulerComponentStatusRemoving:
+		case scheduler.SchedulerComponentStatusRemoving:
 			msg, stateChanged, err = c.pollOnRemoving(input, captureID)
 		default:
 			return nil, errors.New("schedulerv3: table state unknown")
@@ -471,13 +567,13 @@ func (r *changefeed) handleMove(
 	// Ignore move table if
 	// 1) it's not in Replicating state or
 	// 2) the dest capture is the primary.
-	if r.scheduleState != scheduller.SchedulerComponentStatusWorking || r.primary == dest {
+	if r.scheduleState != scheduler.SchedulerComponentStatusWorking || r.primary == dest {
 		log.Warn("schedulerv3: move table is ignored",
 			zap.String("changefeed", r.ID.ID),
 			zap.Any("replicationSet", r))
 		return nil, nil
 	}
-	r.scheduleState = scheduller.SchedulerComponentStatusPrepare
+	r.scheduleState = scheduler.SchedulerComponentStatusPrepare
 	err := r.setCapture(dest, RoleSecondary)
 	if err != nil {
 		return nil, errors.Trace(err)
@@ -487,7 +583,7 @@ func (r *changefeed) handleMove(
 		zap.Any("replicationSet", r))
 	status := ChangefeedStatus{
 		ChangefeedID:    r.ID,
-		ComponentStatus: scheduller.ComponentStatusAbsent,
+		ComponentStatus: scheduler.ComponentStatusAbsent,
 	}
 	return r.poll(&status, dest)
 }
@@ -496,7 +592,7 @@ func (r *changefeed) handleAdd(
 	captureID model.CaptureID,
 ) ([]*new_arch.Message, error) {
 	// Ignore add table if it's not in Absent state.
-	if r.scheduleState != scheduller.SchedulerComponentStatusAbsent {
+	if r.scheduleState != scheduler.SchedulerComponentStatusAbsent {
 		log.Warn("schedulerv3: add table is ignored",
 			zap.String("changefeed", r.ID.ID),
 			zap.Any("replicationSet", r))
@@ -508,7 +604,7 @@ func (r *changefeed) handleAdd(
 	}
 	status := ChangefeedStatus{
 		ChangefeedID:    r.ID,
-		ComponentStatus: scheduller.ComponentStatusAbsent,
+		ComponentStatus: scheduler.ComponentStatusAbsent,
 	}
 	msgs, err := r.poll(&status, captureID)
 	if err != nil {
@@ -529,19 +625,19 @@ func (r *changefeed) handleRemove() ([]*new_arch.Message, error) {
 		return nil, nil
 	}
 	// Ignore remove table if it's not in Replicating state.
-	if r.scheduleState != scheduller.SchedulerComponentStatusWorking {
+	if r.scheduleState != scheduler.SchedulerComponentStatusWorking {
 		log.Warn("schedulerv3: remove table is ignored",
 			zap.String("changefeed", r.ID.ID),
 			zap.Any("replicationSet", r))
 		return nil, nil
 	}
-	r.scheduleState = scheduller.SchedulerComponentStatusRemoving
+	r.scheduleState = scheduler.SchedulerComponentStatusRemoving
 	log.Info("schedulerv3: replication state transition, remove table",
 		zap.String("changefeed", r.ID.ID),
 		zap.Any("replicationSet", r))
 	status := ChangefeedStatus{
 		ChangefeedID:    r.ID,
-		ComponentStatus: scheduller.ComponentStatusWorking,
+		ComponentStatus: scheduler.ComponentStatusWorking,
 	}
 	return r.poll(&status, r.primary)
 }
@@ -560,7 +656,7 @@ func (r *changefeed) handleCaptureShutdown(
 	// The capture has shutdown, the table has stopped.
 	status := ChangefeedStatus{
 		ChangefeedID:    r.ID,
-		ComponentStatus: scheduller.ComponentStatusStopped,
+		ComponentStatus: scheduler.ComponentStatusStopped,
 	}
 	oldState := r.scheduleState
 	msgs, err := r.poll(&status, captureID)

@@ -14,7 +14,7 @@
 package coordinator
 
 import (
-	"github.com/pingcap/tiflow/new_arch/scheduller"
+	"github.com/pingcap/tiflow/new_arch/scheduler"
 	"math"
 	"math/rand"
 	"sync/atomic"
@@ -71,7 +71,7 @@ func (r *rebalanceScheduler) Schedule(
 		if !ok {
 			return nil
 		}
-		if rep.scheduleState != scheduller.SchedulerComponentStatusWorking {
+		if rep.scheduleState != scheduler.SchedulerComponentStatusWorking {
 			log.Debug("schedulerv3: not all table replicating, premature to rebalance tables")
 			return nil
 		}

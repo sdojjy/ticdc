@@ -16,7 +16,7 @@ package coordinator
 import (
 	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/model"
-	"github.com/pingcap/tiflow/new_arch/scheduller"
+	"github.com/pingcap/tiflow/new_arch/scheduler"
 	"go.uber.org/zap"
 )
 
@@ -130,7 +130,7 @@ func (b *basicScheduler) Schedule(
 				primary:       "",
 				ID:            model.DefaultChangeFeedID(cf.ID),
 				Info:          cf,
-				scheduleState: scheduller.SchedulerComponentStatusAbsent,
+				scheduleState: scheduler.SchedulerComponentStatusAbsent,
 				Captures:      make(map[model.CaptureID]Role),
 			})
 			// The table ID is not in the replication means the two sets are
@@ -138,12 +138,12 @@ func (b *basicScheduler) Schedule(
 			tablesAllFind = false
 			continue
 		}
-		if rep.scheduleState == scheduller.SchedulerComponentStatusAbsent {
+		if rep.scheduleState == scheduler.SchedulerComponentStatusAbsent {
 			newChangefeeds = append(newChangefeeds, &changefeed{
 				primary:       "",
 				ID:            model.DefaultChangeFeedID(cf.ID),
 				Info:          cf,
-				scheduleState: scheduller.SchedulerComponentStatusAbsent,
+				scheduleState: scheduler.SchedulerComponentStatusAbsent,
 				Captures:      make(map[model.CaptureID]Role),
 			})
 		}

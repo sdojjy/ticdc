@@ -14,7 +14,7 @@
 package coordinator
 
 import (
-	"github.com/pingcap/tiflow/new_arch/scheduller"
+	"github.com/pingcap/tiflow/new_arch/scheduler"
 	"math"
 	"sync"
 
@@ -119,7 +119,7 @@ func (d *drainCaptureScheduler) Schedule(
 	victimSpans := make([]*changefeed, 0, maxTaskConcurrency)
 	skipDrain := false
 	for _, rep := range replications {
-		if rep.scheduleState != scheduller.SchedulerComponentStatusWorking {
+		if rep.scheduleState != scheduler.SchedulerComponentStatusWorking {
 			// only drain the target capture if all tables is replicating,
 			log.Debug("schedulerv3: drain capture scheduler skip this tick,"+
 				"not all table is replicating",

@@ -14,7 +14,7 @@
 package coordinator
 
 import (
-	"github.com/pingcap/tiflow/new_arch/scheduller"
+	"github.com/pingcap/tiflow/new_arch/scheduler"
 	"math"
 	"math/rand"
 	"sort"
@@ -113,7 +113,7 @@ func newBalanceMoveTables(
 	}
 
 	for _, rep := range replications {
-		if rep.scheduleState == scheduller.SchedulerComponentStatusWorking {
+		if rep.scheduleState == scheduler.SchedulerComponentStatusWorking {
 			tablesPerCapture[rep.primary][rep.ID] = rep
 		}
 	}
