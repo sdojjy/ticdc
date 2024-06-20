@@ -30,8 +30,6 @@ type Message struct {
 	From          string `json:"sender,omitempty"`
 	To            string `json:"to,omitempty"`
 
-	AddMaintainerRequest      *AddMaintainerRequest      `json:"add_maintainer_request,omitempty"`
-	RemoveMaintainerRequest   *RemoveMaintainerRequest   `json:"remove_maintainer_request,omitempty"`
 	DispatchMaintainerRequest *DispatchMaintainerRequest `json:"dispatch_maintainer_request,omitempty"`
 
 	AddTableRangeMaintainerRequest  *AddTableRangeMaintainerRequest  `json:"add_table_range_maintainer_request,omitempty"`

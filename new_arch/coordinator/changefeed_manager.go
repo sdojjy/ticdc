@@ -76,7 +76,7 @@ func (r *ChangefeedManager) HandleCaptureChanges(
 		//}
 		for _, cfs := range init {
 			for _, c := range cfs {
-				cf, err := NewChangefeed(c.ChangefeedID, spanStatusMap[c.ChangefeedID],
+				cf, err := newChangefeed(c.ChangefeedID, spanStatusMap[c.ChangefeedID],
 					r.allChangefeedConfig[c.ChangefeedID].Info,
 					r.allChangefeedConfig[c.ChangefeedID].Status)
 				if err != nil {

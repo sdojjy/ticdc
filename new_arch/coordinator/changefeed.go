@@ -61,8 +61,8 @@ type changefeed struct {
 	scheduleState scheduler.SchedulerComponentStatus
 }
 
-// NewChangefeed returns a new replication set.
-func NewChangefeed(
+// newChangefeed returns a new replication set.
+func newChangefeed(
 	id model.ChangeFeedID,
 	tableStatus map[model.CaptureID]*ChangefeedStatus,
 	info *model.ChangeFeedInfo,
@@ -160,10 +160,11 @@ func NewChangefeed(
 func (c *changefeed) Stop(ctx context.Context) error {
 	err := c.coordinator.SendMessage(ctx, c.primary, new_arch.GetChangefeedMaintainerManagerTopic(),
 		&new_arch.Message{
-			RemoveMaintainerRequest: &new_arch.RemoveMaintainerRequest{
-				ID: c.Info.ID,
-			},
-		})
+			DispatchMaintainerRequest: &new_arch.DispatchMaintainerRequest{
+				RemoveMaintainerRequest: &new_arch.RemoveMaintainerRequest{
+					ID: c.Info.ID,
+				},
+			}})
 	if err != nil {
 		return errors.Trace(err)
 	}
