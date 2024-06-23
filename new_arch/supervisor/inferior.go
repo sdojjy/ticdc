@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/model"
+	"github.com/pingcap/tiflow/new_arch"
 	"github.com/pingcap/tiflow/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -92,7 +93,7 @@ func (r SchedulerStatus) String() string {
 	}
 }
 
-// ComponentStatus is the state in component side
+// ComponentStatus is the state in inferior node side
 // Absent -> Preparing -> Prepared -> Working -> Stopping -> Stopped
 // todo: define it in pb file
 type ComponentStatus int
@@ -110,12 +111,14 @@ const (
 type Inferior interface {
 	UpdateStatus(InferiorStatus)
 	NewInferiorStatus(ComponentStatus) InferiorStatus
-	NewAddInferiorMessage(model.CaptureID, bool) *DispatchMessage
-	NewRemoveInferiorMessage(model.CaptureID) *DispatchMessage
+	NewAddInferiorMessage(model.CaptureID, bool) *new_arch.Message
+	NewRemoveInferiorMessage(model.CaptureID) *new_arch.Message
 }
 
 type InferiorID interface {
 	Equal(InferiorID) bool
+	String() string
+	Less(InferiorID) bool
 }
 
 type InferiorStatus interface {
@@ -137,7 +140,7 @@ type StateMachine struct {
 	Inferior Inferior
 }
 
-// NewStateMachine build a statemachine from all capture reported status
+// NewStateMachine build a state machine from all capture reported status
 // it could be called after a supervisor is bootstrapped
 func NewStateMachine(
 	id InferiorID,
@@ -371,12 +374,12 @@ func (s *StateMachine) checkInvariant(
 // poll transit state based on input and the current state.
 func (s *StateMachine) poll(
 	input InferiorStatus, captureID model.CaptureID,
-) ([]*DispatchMessage, error) {
+) ([]*new_arch.Message, error) {
 	if _, ok := s.Captures[captureID]; !ok {
 		return nil, nil
 	}
 
-	msgBuf := make([]*DispatchMessage, 0)
+	msgBuf := make([]*new_arch.Message, 0)
 	stateChanged := true
 	for stateChanged {
 		err := s.checkInvariant(input, captureID)
@@ -384,7 +387,7 @@ func (s *StateMachine) poll(
 			return nil, errors.Trace(err)
 		}
 		oldState := s.State
-		var msg *DispatchMessage
+		var msg *new_arch.Message
 		switch s.State {
 		case SchedulerStatusAbsent:
 			stateChanged, err = s.pollOnAbsent(input, captureID)
@@ -445,7 +448,7 @@ func (s *StateMachine) pollOnAbsent(
 
 func (s *StateMachine) pollOnPrepare(
 	input InferiorStatus, captureID model.CaptureID,
-) (*DispatchMessage, bool, error) {
+) (*new_arch.Message, bool, error) {
 	switch input.GetInferiorState() {
 	case ComponentStatusAbsent:
 		if s.isInRole(captureID, RoleSecondary) {
@@ -511,7 +514,7 @@ func (s *StateMachine) pollOnPrepare(
 
 func (s *StateMachine) pollOnCommit(
 	input InferiorStatus, captureID model.CaptureID,
-) (*DispatchMessage, bool, error) {
+) (*new_arch.Message, bool, error) {
 	switch input.GetInferiorState() {
 	case ComponentStatusPrepared:
 		if s.isInRole(captureID, RoleSecondary) {
@@ -690,7 +693,7 @@ func (s *StateMachine) pollOnWorking(
 //nolint:unparam
 func (s *StateMachine) pollOnRemoving(
 	input InferiorStatus, captureID model.CaptureID,
-) (*DispatchMessage, bool, error) {
+) (*new_arch.Message, bool, error) {
 	switch input.GetInferiorState() {
 	case ComponentStatusPrepared,
 		ComponentStatusPreparing,
@@ -726,13 +729,13 @@ func (s *StateMachine) pollOnRemoving(
 
 func (s *StateMachine) handleInferiorStatus(
 	input InferiorStatus, from model.CaptureID,
-) ([]*DispatchMessage, error) {
+) ([]*new_arch.Message, error) {
 	return s.poll(input, from)
 }
 
 func (s *StateMachine) handleAddInferior(
 	captureID model.CaptureID,
-) ([]*DispatchMessage, error) {
+) ([]*new_arch.Message, error) {
 	// Ignore add inferior if it's not in Absent state.
 	if s.State != SchedulerStatusAbsent {
 		log.Warn("add inferior is ignored",
@@ -762,7 +765,7 @@ func (s *StateMachine) handleAddInferior(
 
 func (s *StateMachine) handleMoveInferior(
 	dest model.CaptureID,
-) ([]*DispatchMessage, error) {
+) ([]*new_arch.Message, error) {
 	// Ignore move inferior if it has been removed already.
 	if s.hasRemoved() {
 		log.Warn("move inferior is ignored",
@@ -787,7 +790,7 @@ func (s *StateMachine) handleMoveInferior(
 	return s.poll(status, dest)
 }
 
-func (s *StateMachine) handleRemoveInferior() ([]*DispatchMessage, error) {
+func (s *StateMachine) handleRemoveInferior() ([]*new_arch.Message, error) {
 	// Ignore remove inferior if it has been removed already.
 	if s.hasRemoved() {
 		log.Warn("remove inferior is ignored",
@@ -815,7 +818,7 @@ func (s *StateMachine) handleRemoveInferior() ([]*DispatchMessage, error) {
 // whether s is affected by the capture shutdown.
 func (s *StateMachine) handleCaptureShutdown(
 	captureID model.CaptureID,
-) ([]*DispatchMessage, bool, error) {
+) ([]*new_arch.Message, bool, error) {
 	_, ok := s.Captures[captureID]
 	if !ok {
 		// r is not affected by the capture shutdown.
@@ -836,7 +839,4 @@ func (s *StateMachine) hasRemoved() bool {
 	// It has been removed successfully if it's state is Removing,
 	// and there is no capture has it.
 	return s.State == SchedulerStatusRemoving && len(s.Captures) == 0
-}
-
-type DispatchMessage struct {
 }
