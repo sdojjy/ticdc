@@ -16,8 +16,6 @@ package maintainer
 import (
 	"context"
 	"github.com/pingcap/log"
-	"github.com/pingcap/tiflow/cdc/entry/schema"
-	"github.com/pingcap/tiflow/cdc/kv"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/owner"
 	"github.com/pingcap/tiflow/cdc/vars"
@@ -25,7 +23,6 @@ import (
 	"github.com/pingcap/tiflow/new_arch/scheduler"
 	"github.com/pingcap/tiflow/pkg/config"
 	"github.com/pingcap/tiflow/pkg/errors"
-	pfilter "github.com/pingcap/tiflow/pkg/filter"
 	"github.com/pingcap/tiflow/pkg/upstream"
 	"go.uber.org/zap"
 )
@@ -101,44 +98,44 @@ func (m *Maintainer) SendMessage(ctx context.Context, capture string, topic stri
 
 func (m *Maintainer) ScheduleTableRangeManager(ctx context.Context) error {
 	//load tables
-	stream, _ := m.upstreamManager.GetDefaultUpstream()
-	meta := kv.GetSnapshotMeta(stream.KVStorage, m.status.CheckpointTs)
-	filter, err := pfilter.NewFilter(m.info.Config, "")
-	snap, err := schema.NewSingleSnapshotFromMeta(
-		model.DefaultChangeFeedID(m.info.ID),
-		meta, m.status.CheckpointTs, m.info.Config.ForceReplicate, filter)
-	if err != nil {
-		return errors.Trace(err)
-	}
-
-	// list all tables
-	res := make([]model.TableID, 0)
-	snap.IterTables(true, func(tableInfo *model.TableInfo) {
-		if filter.ShouldIgnoreTable(tableInfo.TableName.Schema, tableInfo.TableName.Table) {
-			return
-		}
-		// Sequence is not supported yet, TiCDC needs to filter all sequence tables.
-		// See https://github.com/pingcap/tiflow/issues/4559
-		if tableInfo.IsSequence() {
-			return
-		}
-		if pi := tableInfo.GetPartitionInfo(); pi != nil {
-			for _, partition := range pi.Definitions {
-				res = append(res, partition.ID)
-			}
-		} else {
-			res = append(res, tableInfo.ID)
-		}
-	})
-	// todo: load balance table id to table range maintainer
-	captures := m.globalVars.CaptureManager.GetCaptures()
-	var tableIDGroups = make([][]model.TableID, len(captures))
-	for range captures {
-		tableIDGroups = append(tableIDGroups, make([]model.TableID, 0))
-	}
-	for idx, tableID := range res {
-		tableIDGroups[idx%len(captures)] = append(tableIDGroups[idx%len(captures)], tableID)
-	}
+	//stream, _ := m.upstreamManager.GetDefaultUpstream()
+	//meta := kv.GetSnapshotMeta(stream.KVStorage, m.status.CheckpointTs)
+	//filter, err := pfilter.NewFilter(m.info.Config, "")
+	//snap, err := schema.NewSingleSnapshotFromMeta(
+	//	model.DefaultChangeFeedID(m.info.ID),
+	//	meta, m.status.CheckpointTs, m.info.Config.ForceReplicate, filter)
+	//if err != nil {
+	//	return errors.Trace(err)
+	//}
+	//
+	//// list all tables
+	//res := make([]model.TableID, 0)
+	//snap.IterTables(true, func(tableInfo *model.TableInfo) {
+	//	if filter.ShouldIgnoreTable(tableInfo.TableName.Schema, tableInfo.TableName.Table) {
+	//		return
+	//	}
+	//	// Sequence is not supported yet, TiCDC needs to filter all sequence tables.
+	//	// See https://github.com/pingcap/tiflow/issues/4559
+	//	if tableInfo.IsSequence() {
+	//		return
+	//	}
+	//	if pi := tableInfo.GetPartitionInfo(); pi != nil {
+	//		for _, partition := range pi.Definitions {
+	//			res = append(res, partition.ID)
+	//		}
+	//	} else {
+	//		res = append(res, tableInfo.ID)
+	//	}
+	//})
+	//// todo: load balance table id to table range maintainer
+	//captures := m.globalVars.CaptureManager.GetCaptures()
+	//var tableIDGroups = make([][]model.TableID, len(captures))
+	//for range captures {
+	//	tableIDGroups = append(tableIDGroups, make([]model.TableID, 0))
+	//}
+	//for idx, tableID := range res {
+	//	tableIDGroups[idx%len(captures)] = append(tableIDGroups[idx%len(captures)], tableID)
+	//}
 
 	return nil
 }
