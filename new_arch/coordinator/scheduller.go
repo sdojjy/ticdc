@@ -218,9 +218,9 @@ func newBurstAddTables(newChangefeeds []*changefeed, captureIDs []model.CaptureI
 			Info:         cf.Info,
 			Status:       cf.Status,
 		})
-		log.Info("schedulerv3: burst add changefeed",
-			zap.String("changefeed", cf.ID.ID),
-			zap.String("captureID", targetCapture))
+		//log.Info("schedulerv3: burst add changefeed",
+		//	zap.String("changefeed", cf.ID.ID),
+		//	zap.String("captureID", targetCapture))
 
 		idx++
 		if idx >= len(captureIDs) {

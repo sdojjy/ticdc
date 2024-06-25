@@ -97,7 +97,8 @@ func (c *changefeed) NewAddInferiorMessage(capture model.CaptureID, secondary bo
 		To: capture,
 		DispatchMaintainerRequest: &new_arch.DispatchMaintainerRequest{
 			AddMaintainerRequest: &new_arch.AddMaintainerRequest{
-				Config:      c.Info,
+				ID:          c.ID,
+				Config:      nil, //todo
 				Status:      c.Status,
 				IsSecondary: secondary,
 			}},
@@ -175,7 +176,7 @@ func (c *coordinatorImpl) NewChangefeed(id InferiorID) Inferior {
 func (c *coordinatorImpl) Tick(ctx context.Context,
 	rawState orchestrator.ReactorState) (nextState orchestrator.ReactorState, err error) {
 	state := rawState.(*orchestrator.GlobalReactorState)
-	var newChangefeeds = make(map[model.ChangeFeedID]struct{})
+	//var newChangefeeds = make(map[model.ChangeFeedID]struct{})
 
 	// todo: cache it
 	c.Changefeeds = state.Changefeeds

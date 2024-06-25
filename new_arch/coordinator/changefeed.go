@@ -311,7 +311,8 @@ func (c *changefeed) getAddChangefeedRequest(capture string, secondary bool) *ne
 		To: capture,
 		DispatchMaintainerRequest: &new_arch.DispatchMaintainerRequest{
 			AddMaintainerRequest: &new_arch.AddMaintainerRequest{
-				Config:      c.Info,
+				ID:          c.ID,
+				Config:      nil, //todo:
 				Status:      c.Status,
 				IsSecondary: secondary,
 			}},

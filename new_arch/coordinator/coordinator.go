@@ -15,12 +15,14 @@ package coordinator
 
 import (
 	"context"
+	"fmt"
 	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/owner"
 	"github.com/pingcap/tiflow/cdc/scheduler"
 	"github.com/pingcap/tiflow/cdc/vars"
 	"github.com/pingcap/tiflow/new_arch"
+	ns "github.com/pingcap/tiflow/new_arch/scheduler"
 	"github.com/pingcap/tiflow/pkg/config"
 	"github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/orchestrator"
@@ -47,6 +49,18 @@ type coordinatorImpl struct {
 
 	msgLock sync.RWMutex
 	msgBuf  []*new_arch.Message
+}
+
+var allChangefeeds []*model.ChangeFeedInfo
+
+func init() {
+	for i := 0; i < 80000; i++ {
+		allChangefeeds = append(allChangefeeds, &model.ChangeFeedInfo{
+			ID:      fmt.Sprintf("%d", i),
+			Config:  config.GetDefaultReplicaConfig(),
+			SinkURI: "blackhole://",
+		})
+	}
 }
 
 func NewCoordinator(
@@ -102,6 +116,8 @@ type changefeedError struct {
 	failErr *model.RunningError
 }
 
+var lastCheckTime = time.Now()
+
 func (c *coordinatorImpl) Tick(ctx context.Context,
 	rawState orchestrator.ReactorState) (nextState orchestrator.ReactorState, err error) {
 	state := rawState.(*orchestrator.GlobalReactorState)
@@ -110,84 +126,113 @@ func (c *coordinatorImpl) Tick(ctx context.Context,
 	//	return nil, errors.Trace(err)
 	//}
 
-	var newChangefeeds = make(map[model.ChangeFeedID]struct{})
-	// Tick all changefeeds.
-	for changefeedID, reactor := range state.Changefeeds {
-		_, exist := c.changefeeds[changefeedID]
-		if !exist {
-			// check if changefeed should running
-			if reactor.Info.State == model.StateStopped ||
-				reactor.Info.State == model.StateFailed ||
-				reactor.Info.State == model.StateFinished {
-				continue
+	//var newChangefeeds = make(map[model.ChangeFeedID]struct{})
+	//// Tick all changefeeds.
+	//for changefeedID, reactor := range state.Changefeeds {
+	//	_, exist := c.changefeeds[changefeedID]
+	//	if !exist {
+	//		// check if changefeed should running
+	//		if reactor.Info.State == model.StateStopped ||
+	//			reactor.Info.State == model.StateFailed ||
+	//			reactor.Info.State == model.StateFinished {
+	//			continue
+	//		}
+	//		// create
+	//		newChangefeeds[changefeedID] = struct{}{}
+	//	}
+	//}
+	//
+	//// Cleanup changefeeds that are not in the state.
+	//// save status to etcd
+	//for changefeedID, cf := range c.changefeeds {
+	//	if reactor, exist := state.Changefeeds[changefeedID]; exist {
+	//		//todo: handle error
+	//		cf.EmitCheckpointTs(ctx, reactor.Status.CheckpointTs)
+	//
+	//		checkpointTs := cf.GetCheckpointTs(ctx)
+	//		reactor.PatchStatus(
+	//			func(status *model.ChangeFeedStatus) (*model.ChangeFeedStatus, bool, error) {
+	//				changed := false
+	//				if status.CheckpointTs != checkpointTs {
+	//					status.CheckpointTs = checkpointTs
+	//					changed = true
+	//				}
+	//				return status, changed, nil
+	//			})
+	//		//save error info
+	//		var lastWarning *model.RunningError
+	//		var lastErr *model.RunningError
+	//		for captureID, errs := range cf.errors {
+	//			lastWarning = errs.warning
+	//			lastErr = errs.failErr
+	//			reactor.PatchTaskPosition(captureID,
+	//				func(position *model.TaskPosition) (*model.TaskPosition, bool, error) {
+	//					if position == nil {
+	//						position = &model.TaskPosition{}
+	//					}
+	//					changed := false
+	//					if position.Warning != errs.warning {
+	//						position.Warning = errs.warning
+	//						changed = true
+	//					}
+	//					if position.Error != errs.failErr {
+	//						position.Error = errs.failErr
+	//						changed = true
+	//					}
+	//					return position, changed, nil
+	//				})
+	//		}
+	//		reactor.PatchInfo(func(info *model.ChangeFeedInfo) (*model.ChangeFeedInfo, bool, error) {
+	//			info.Error = lastErr
+	//			info.Warning = lastWarning
+	//			return info, true, nil
+	//		})
+	//
+	//		// reported changefeed state
+	//		switch cf.state {
+	//		case model.StateFailed, model.StateFinished:
+	//			reactor.PatchInfo(func(info *model.ChangeFeedInfo) (*model.ChangeFeedInfo, bool, error) {
+	//				info.State = cf.state
+	//				return info, false, nil
+	//			})
+	//			// stop changefeed, and remove
+	//			cf.Stop(ctx)
+	//		}
+	//		continue
+	//	}
+	//
+	//	// stop changefeed
+	//	cf.Stop(ctx)
+	//	delete(c.changefeeds, changefeedID)
+	//}
+
+	if time.Since(lastCheckTime) > time.Second*20 {
+		workingTask := 0
+		prepareTask := 0
+		absentTask := 0
+		commitTask := 0
+		removingTask := 0
+		for _, cf := range c.changefeedManager.changefeeds {
+			switch cf.scheduleState {
+			case ns.SchedulerComponentStatusAbsent:
+				absentTask++
+			case ns.SchedulerComponentStatusPrepare:
+				prepareTask++
+			case ns.SchedulerComponentStatusCommit:
+				commitTask++
+			case ns.SchedulerComponentStatusWorking:
+				workingTask++
+			case ns.SchedulerComponentStatusRemoving:
+				removingTask++
 			}
-			// create
-			newChangefeeds[changefeedID] = struct{}{}
 		}
-	}
-
-	// Cleanup changefeeds that are not in the state.
-	// save status to etcd
-	for changefeedID, cf := range c.changefeeds {
-		if reactor, exist := state.Changefeeds[changefeedID]; exist {
-			//todo: handle error
-			cf.EmitCheckpointTs(ctx, reactor.Status.CheckpointTs)
-
-			checkpointTs := cf.GetCheckpointTs(ctx)
-			reactor.PatchStatus(
-				func(status *model.ChangeFeedStatus) (*model.ChangeFeedStatus, bool, error) {
-					changed := false
-					if status.CheckpointTs != checkpointTs {
-						status.CheckpointTs = checkpointTs
-						changed = true
-					}
-					return status, changed, nil
-				})
-			//save error info
-			var lastWarning *model.RunningError
-			var lastErr *model.RunningError
-			for captureID, errs := range cf.errors {
-				lastWarning = errs.warning
-				lastErr = errs.failErr
-				reactor.PatchTaskPosition(captureID,
-					func(position *model.TaskPosition) (*model.TaskPosition, bool, error) {
-						if position == nil {
-							position = &model.TaskPosition{}
-						}
-						changed := false
-						if position.Warning != errs.warning {
-							position.Warning = errs.warning
-							changed = true
-						}
-						if position.Error != errs.failErr {
-							position.Error = errs.failErr
-							changed = true
-						}
-						return position, changed, nil
-					})
-			}
-			reactor.PatchInfo(func(info *model.ChangeFeedInfo) (*model.ChangeFeedInfo, bool, error) {
-				info.Error = lastErr
-				info.Warning = lastWarning
-				return info, true, nil
-			})
-
-			// reported changefeed state
-			switch cf.state {
-			case model.StateFailed, model.StateFinished:
-				reactor.PatchInfo(func(info *model.ChangeFeedInfo) (*model.ChangeFeedInfo, bool, error) {
-					info.State = cf.state
-					return info, false, nil
-				})
-				// stop changefeed, and remove
-				cf.Stop(ctx)
-			}
-			continue
-		}
-
-		// stop changefeed
-		cf.Stop(ctx)
-		delete(c.changefeeds, changefeedID)
+		log.Info("changefeed status",
+			zap.Int("absent", absentTask),
+			zap.Int("prepare", prepareTask),
+			zap.Int("commit", commitTask),
+			zap.Int("working", workingTask),
+			zap.Int("removing", removingTask))
+		lastCheckTime = time.Now()
 	}
 
 	c.changefeedManager.allChangefeedConfig = state.Changefeeds
@@ -208,7 +253,7 @@ func (c *coordinatorImpl) Tick(ctx context.Context,
 
 	// only balance tables when all capture is replied bootstrap messages
 	if c.captureManager.CheckAllCaptureInitialized() {
-		c.ScheduleChangefeedMaintainer(ctx, state, newChangefeeds)
+		c.ScheduleChangefeedMaintainer(ctx, allChangefeeds)
 		//try to rebalance tables if needed
 		c.BalanceTables(ctx)
 	}
@@ -242,8 +287,7 @@ func (c *coordinatorImpl) BalanceTables(ctx context.Context) error {
 }
 
 func (c *coordinatorImpl) ScheduleChangefeedMaintainer(ctx context.Context,
-	state *orchestrator.GlobalReactorState,
-	newChangefeeds map[model.ChangeFeedID]struct{}) error {
+	changefeeds []*model.ChangeFeedInfo) error {
 
 	//var captures []*model.CaptureInfo
 	//for _, capture := range state.Captures {
@@ -253,10 +297,6 @@ func (c *coordinatorImpl) ScheduleChangefeedMaintainer(ctx context.Context,
 		c.changefeedManager.HandleCaptureChanges(changes.Init, changes.Removed)
 	}
 
-	var changefeeds []*model.ChangeFeedInfo
-	for _, cf := range state.Changefeeds {
-		changefeeds = append(changefeeds, cf.Info)
-	}
 	tasks := c.schedulerManager.Schedule(
 		changefeeds,
 		c.captureManager.Captures,
@@ -267,6 +307,35 @@ func (c *coordinatorImpl) ScheduleChangefeedMaintainer(ctx context.Context,
 	if err != nil {
 		return errors.Trace(err)
 	}
+
+	//var mmsgs []*new_arch.Message
+	//captureMap := make(map[string]*new_arch.Message)
+	//for _, m := range messages {
+	//	_, ok := captureMap[m.To]
+	//	if !ok {
+	//		captureMap[m.To] = &new_arch.Message{
+	//			Header: m.Header,
+	//			From:   m.From,
+	//			To:     m.To,
+	//			DispatchMaintainerRequest: &new_arch.DispatchMaintainerRequest{
+	//				BatchAddMaintainerRequest: &new_arch.BatchAddMaintainerRequest{},
+	//				//BatchRemoveMaintainerRequest: &new_arch.BatchRemoveMaintainerRequest{},
+	//			},
+	//		}
+	//		mmsgs = append(mmsgs, captureMap[m.To])
+	//	}
+	//	if m.DispatchMaintainerRequest.AddMaintainerRequest != nil {
+	//		captureMap[m.To].DispatchMaintainerRequest.BatchAddMaintainerRequest.Requests =
+	//			append(captureMap[m.To].DispatchMaintainerRequest.BatchAddMaintainerRequest.Requests,
+	//				m.DispatchMaintainerRequest.AddMaintainerRequest)
+	//	}
+	//	if m.DispatchMaintainerRequest.RemoveMaintainerRequest != nil {
+	//		captureMap[m.To].DispatchMaintainerRequest.BatchRemoveMaintainerRequest.Requests =
+	//			append(captureMap[m.To].DispatchMaintainerRequest.BatchRemoveMaintainerRequest.Requests,
+	//				m.DispatchMaintainerRequest.RemoveMaintainerRequest)
+	//	}
+	//}
+
 	if err := c.sendMsgs(ctx, messages); err != nil {
 		return errors.Trace(err)
 	}

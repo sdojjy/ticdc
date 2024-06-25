@@ -122,49 +122,78 @@ func (m *MaintainerManager) handleDispatchMaintainerRequest(
 	request *new_arch.DispatchMaintainerRequest,
 	epoch string,
 ) error {
-	if m.Epoch != epoch {
-		log.Info("schedulerv3: agent receive dispatch table request " +
-			"epoch does not match, ignore it")
-		return nil
+	if request.BatchAddMaintainerRequest != nil {
+		for _, req := range request.BatchAddMaintainerRequest.Requests {
+			span := req.ID
+			task := &dispatchMaintainerTask{
+				ID:        span,
+				IsRemove:  false,
+				IsPrepare: req.IsSecondary,
+				status:    dispatchTaskReceived,
+			}
+			cf, ok := m.maintainers[req.ID.ID]
+			if !ok {
+				cf = NewMaintainer(span, m.upstreamManager, m.cfg, m.globalVars,
+					req.Config, req.Status)
+				m.maintainers[req.ID.ID] = cf
+			}
+			cf.injectDispatchTableTask(task)
+		}
 	}
-	// make the assumption that all tables are tracked by the agent now.
-	// this should be guaranteed by the caller of the method.
+	if request.BatchRemoveMaintainerRequest != nil {
+		for _, req := range request.BatchRemoveMaintainerRequest.Requests {
+			span := req.ID
+			cf, ok := m.maintainers[span]
+			if !ok {
+				log.Warn("schedulerv3: agent ignore remove table request, "+
+					"since the table not found",
+					zap.String("changefeed", span),
+					zap.String("span", span),
+					zap.Any("request", request))
+				return nil
+			}
+			task := &dispatchMaintainerTask{
+				ID:       model.DefaultChangeFeedID(req.ID),
+				IsRemove: true,
+				status:   dispatchTaskReceived,
+			}
+			cf.injectDispatchTableTask(task)
+		}
+	}
 	if request.AddMaintainerRequest != nil {
-		span := model.DefaultChangeFeedID(request.AddMaintainerRequest.Config.ID)
+		req := request.AddMaintainerRequest
+		span := req.ID
 		task := &dispatchMaintainerTask{
 			ID:        span,
 			IsRemove:  false,
-			IsPrepare: request.AddMaintainerRequest.IsSecondary,
+			IsPrepare: req.IsSecondary,
 			status:    dispatchTaskReceived,
 		}
-		cf, ok := m.maintainers[request.AddMaintainerRequest.Config.ID]
+		cf, ok := m.maintainers[req.ID.ID]
 		if !ok {
 			cf = NewMaintainer(span, m.upstreamManager, m.cfg, m.globalVars,
-				request.AddMaintainerRequest.Config, request.AddMaintainerRequest.Status)
-			m.maintainers[request.AddMaintainerRequest.Config.ID] = cf
+				req.Config, req.Status)
+			m.maintainers[req.ID.ID] = cf
 		}
 		cf.injectDispatchTableTask(task)
-	} else if request.RemoveMaintainerRequest != nil {
-		span := model.DefaultChangeFeedID(request.RemoveMaintainerRequest.ID)
-		cf, ok := m.maintainers[request.RemoveMaintainerRequest.ID]
+	}
+	if request.RemoveMaintainerRequest != nil {
+		span := request.RemoveMaintainerRequest.ID
+		cf, ok := m.maintainers[span]
 		if !ok {
 			log.Warn("schedulerv3: agent ignore remove table request, "+
 				"since the table not found",
-				zap.String("changefeed", span.ID),
-				zap.String("span", span.String()),
+				zap.String("changefeed", span),
+				zap.String("span", span),
 				zap.Any("request", request))
 			return nil
 		}
 		task := &dispatchMaintainerTask{
-			ID:       span,
+			ID:       model.DefaultChangeFeedID(request.RemoveMaintainerRequest.ID),
 			IsRemove: true,
 			status:   dispatchTaskReceived,
 		}
 		cf.injectDispatchTableTask(task)
-	} else {
-		log.Warn("schedulerv3: agent ignore unknown dispatch table request",
-			zap.Any("request", request))
-		return nil
 	}
 	return m.handleTasks()
 }

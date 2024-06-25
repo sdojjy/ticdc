@@ -43,8 +43,17 @@ type Message struct {
 }
 
 type DispatchMaintainerRequest struct {
-	AddMaintainerRequest    *AddMaintainerRequest    `json:"add_maintainer_request,omitempty"`
-	RemoveMaintainerRequest *RemoveMaintainerRequest `json:"remove_maintainer_request,omitempty"`
+	AddMaintainerRequest         *AddMaintainerRequest         `json:"add_maintainer_request,omitempty"`
+	RemoveMaintainerRequest      *RemoveMaintainerRequest      `json:"remove_maintainer_request,omitempty"`
+	BatchAddMaintainerRequest    *BatchAddMaintainerRequest    `json:"batch_add_maintainer_request,omitempty"`
+	BatchRemoveMaintainerRequest *BatchRemoveMaintainerRequest `json:"batch_remove_maintainer_request,omitempty"`
+}
+
+type BatchAddMaintainerRequest struct {
+	Requests []*AddMaintainerRequest `json:"requests,omitempty"`
+}
+type BatchRemoveMaintainerRequest struct {
+	Requests []*RemoveMaintainerRequest `json:"requests,omitempty"`
 }
 
 type DispatchComponentRequest struct {
@@ -67,6 +76,7 @@ type AddTableRangeMaintainerResponse struct {
 }
 
 type AddMaintainerRequest struct {
+	ID          model.ChangeFeedID      `json:"id,omitempty"`
 	Config      *model.ChangeFeedInfo   `json:"config,omitempty"`
 	Status      *model.ChangeFeedStatus `json:"status,omitempty"`
 	IsSecondary bool                    `json:"is_secondary,omitempty"`
